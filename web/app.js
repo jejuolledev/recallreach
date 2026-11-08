@@ -26,7 +26,7 @@
   }
   function toast(msg) {
     var t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
-    document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3200);
+    document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2200);
   }
   function pct(p) {
     if (p == null) return "-";

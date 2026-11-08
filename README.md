@@ -23,7 +23,7 @@ Then:
 ```bash
 git clone <this repo> && cd recallreach
 docker compose up -d --build        # ~3 min the first time: compiles, loads data, runs 6 recalls through the production
-open http://localhost:52795/recallreach/
+open http://localhost:52795/recallreach/index.html
 ```
 
 No login for the app. Management Portal: http://localhost:52795/csp/sys/UtilHome.csp (`_SYSTEM` / `SYS`), production `RecallReach.Production` in namespace `USER`.
@@ -101,7 +101,7 @@ Rows under 5% are folded into "n low-likelihood hidden". Medicaid covers only pa
 
 - Demo recall **D-1226-2015** (Class II, Lisinopril 5 mg unit-dose tablets, American Health Packaging / Wockhardt, lot 131928 exp 2015-09-30, 4,718 cartons, nationwide). 22 MIMIC patients had a lisinopril fill; 8 shown, 14 hidden; 7 got the exact recalled NDC 68084-0060-01. Top without a barcode: patient 10015860, 91%. With the lot scanned for patient 10002428: 100%, "Lot confirmed".
 - 372 of 18,076 openFDA drug recalls share an NDC with the 100 MIMIC demo patients.
-- **Accuracy** (Accuracy tab, 300 random recalls that carry FDA's NDC list, fixed seed): the rule-based reference finds an FDA product NDC in **99.7%**, an exact package NDC in **99.7%**, extracts no NDC that FDA does not list in **300/300**, and its ingredient matches FDA's generic name in **78.7%** (brand names like "Kids' Cough and Chest Congestion" are its weak spot). Live LLM accuracy is not in this build because no key was available at build time: run `tools/run_benchmark.sh` with a key (about $0.0004 per recall with claude-haiku-5-5) and the page shows it next to the rule-based numbers, wrong cases included.
+- **Accuracy** (Accuracy tab, 300 random recalls that carry FDA's NDC list, fixed seed): the rule-based reference finds an FDA product NDC in **99.7%**, an exact package NDC in **99.7%**, extracts no NDC that FDA does not list in **300/300**, and its ingredient matches FDA's generic name in **81.7%** (brand names like "Kids' Cough and Chest Congestion" are its weak spot). Live LLM accuracy is not in this build because no key was available at build time: run `tools/run_benchmark.sh` with a key (estimated $0.001-0.002 per recall with claude-haiku-5-5, two model turns; about $0.5 for all 300) and the page shows it next to the rule-based numbers, wrong cases included.
 
 ## Tests
 

@@ -173,8 +173,9 @@ def reference_extract(recall):
     stop = re.search(r",|\(|\b(tablets?|capsules?|injection|oral|for injection|solution|suspension|cream|ointment|"
                      r"inhalation|extended|delayed|chewable|USP|\d)", product, re.I)
     ing = product[:stop.start()].strip(" ,-") if stop else product[:40]
-    brand = re.match(r"\s*([A-Z][A-Za-z0-9-]+)\s*\(([^)]+)\)", product)
-    if brand:  # "Synthroid (levothyroxine sodium) ..." -> generic inside parentheses
+    brand = re.match(r"\s*([A-Z][A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+){0,2})\s*\(([^)]+)\)", product)
+    if brand and not re.search(r"\d|NDC|count", brand.group(2), re.I):
+        # "Synthroid (levothyroxine sodium) ..." / "Ventolin HFA (albuterol sulfate) ..." -> generic inside parentheses
         ing = brand.group(2).strip()
     ing_conf = "high" if 2 <= len(ing) <= 60 and not re.search(r"\d", ing) else "low"
     out["ingredient"] = {"value": ing, "evidence": ing, "confidence": ing_conf}

@@ -25,7 +25,7 @@ await page.goto(BASE + "/recallreach/index.html#/");
 await page.waitForSelector(".rcard");
 await shot("01_inbox");
 await page.click("#sim");
-await sleep(700); await shot("02_new_recall_arriving");
+await sleep(1600); await shot("02_new_recall_arriving");
 await page.waitForFunction(rn => [...document.querySelectorAll(".rcard")].some(c => c.href.includes(rn) && c.querySelector(".count .n")), RN, { timeout: 60000 });
 await sleep(400); await shot("03_new_recall_read");
 await page.goto(BASE + "/recallreach/index.html#/recall/" + RN);

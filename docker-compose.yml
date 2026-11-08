@@ -10,7 +10,7 @@ services:
     ulimits:
       core: 0          # no multi-GB core files if a native library crashes
     ports:
-      - "${RR_PORT:-52795}:52773"   # web: http://localhost:52795/recallreach/
+      - "${RR_PORT:-52795}:52773"   # web: http://localhost:52795/recallreach/index.html
       - "${RR_SUPERSERVER_PORT:-51795}:1972"
     environment:
       # leave empty for replay mode (no key, deterministic); set it in .env for live mode
