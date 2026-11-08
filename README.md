@@ -122,7 +122,7 @@ P(patient) = average over MIMIC's date shift of [ 1 - product(1 - P(fill)) ]
 
 - Only a scanned lot gives 100% ("exact"). An estimate is capped at 99% and shown rounded (5% steps above 10%, e.g. "≈55%"); the exact factors are in each row's "Why" panel.
 - A scan is saved only if the GTIN check digit is right and the barcode has a lot and an expiry; otherwise nothing is stored.
-- Lot share does little in practice: in the demo recalls it is either capped at 1.0 (the recall is larger than the Medicaid volume) or the 50% default for liquids and injections, so the ranking mostly comes from product match and time on shelf. The "Why" panel says which case applies.
+- Lot share does little in practice: in 11 of the 12 demo recalls it is either capped at 1.0 (the recall is larger than the Medicaid volume) or the 50% default for liquids and injections; only D-0648-2016 gets a real ratio (0.76). So the ranking mostly comes from product match and time on shelf. The "Why" panel says which case applies.
 - Rows under 5% are hidden below the list. Medicaid covers only part of US dispensing, so the lot share over-states the true share; each row's "Why" panel says so.
 
 ## Numbers you can check
