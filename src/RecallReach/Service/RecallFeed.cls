@@ -10,12 +10,14 @@ Method OnProcessInput(pInput As Ens.StringContainer, Output pOutput As %Register
     Set rec = ##class(RecallReach.Data.Recall).RecallIdxOpen(pInput)
     If '$ISOBJECT(rec) Quit $$$ERROR($$$GeneralError, "unknown recall "_pInput)
     Set rec.Status = "new", rec.ArrivedAt = ##class(RecallReach.Core.Config).Now(), rec.Error = ""
-    Set rec.SessionId = ..%SessionId
     $$$QuitOnError(rec.%Save())
-    Do ##class(RecallReach.Data.Audit).Log("FDA feed", "recall.arrived", pInput, rec.Classification_" · "_$E(rec.ProductDescription, 1, 120), ..%SessionId)
     Set msg = ##class(RecallReach.Msg.RecallArrived).%New()
     Set msg.RecallNumber = pInput, msg.Source = ..Adapter.Source
-    Quit ..SendRequestAsync("RecallTriage", msg)
+    Set sc = ..SendRequestAsync("RecallTriage", msg)
+    Set rec.SessionId = ..%SessionId
+    Do rec.%Save()
+    Do ##class(RecallReach.Data.Audit).Log("FDA feed", "recall.arrived", pInput, rec.Classification_" - "_$E(rec.ProductDescription, 1, 120), ..%SessionId)
+    Quit sc
 }
 
 }

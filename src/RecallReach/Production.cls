@@ -16,6 +16,7 @@ XData ProductionDefinition
     <Setting Target="Adapter" Name="Source">queue</Setting>
   </Item>
   <Item Name="ApprovalIntake" Category="RecallReach" ClassName="RecallReach.Service.ApprovalIntake" PoolSize="0" Enabled="true" />
+  <Item Name="BenchmarkRunner" Category="RecallReach" ClassName="RecallReach.Service.BenchmarkRunner" PoolSize="0" Enabled="true" />
   <Item Name="RecallTriage" Category="RecallReach" ClassName="RecallReach.Process.RecallTriage" PoolSize="1" Enabled="true" />
   <Item Name="ApprovalFlow" Category="RecallReach" ClassName="RecallReach.Process.ApprovalFlow" PoolSize="1" Enabled="true" />
   <Item Name="RecallReaderAgent" Category="RecallReach" ClassName="RecallReach.Operation.RecallReaderAgent" PoolSize="1" Enabled="true">

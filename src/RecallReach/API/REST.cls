@@ -78,7 +78,7 @@ ClassMethod Row(r As RecallReach.Data.Recall) As %DynamicObject
 {
     Quit {"recall_number": (r.RecallNumber), "classification": (r.Classification), "firm": (r.Firm),
         "product": (r.ProductDescription), "reason": (r.Reason), "status": (r.Status), "arrived_at": (r.ArrivedAt),
-        "report_date": (r.ReportDate), "initiation_date": (r.InitiationDate), "action": (r.Action),
+        "report_date": (r.ReportDate), "initiation_date": (r.InitiationDate), "action": (r.Action), "rationale": (r.Rationale),
         "shown": (r.PatientsShown), "hidden": (r.PatientsHidden), "top_p": (r.TopP), "top_subject": (r.TopSubject),
         "source": (r.ExtractorSource), "model": (r.Model), "low_confidence": (r.LowConfidence), "session_id": (r.SessionId), "error": (r.Error)}
 }
@@ -294,7 +294,7 @@ ClassMethod Audit() As %Status
         Do arr.%Push({"id": (rs.%Get("ID")), "ts": (rs.%Get("TS")), "actor": (rs.%Get("Actor")), "event": (rs.%Get("Event")),
             "recall_number": (rs.%Get("RecallNumber")), "detail": (rs.%Get("Detail")), "session_id": (rs.%Get("SessionId"))})
     }
-    Quit ..Out({"events": (arr), "trace_url": "/csp/healthshare/user/EnsPortal.VisualTrace.zen?SESSIONID="})
+    Quit ..Out({"events": (arr), "trace_url": "/csp/user/EnsPortal.VisualTrace.zen?SESSIONID="})
 }
 
 ClassMethod LLMCalls() As %Status

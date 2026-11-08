@@ -1,1 +1,39 @@
-<!doctype html><title>RecallReach</title>hi
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RecallReach</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Cpath d='M9 17l5 5 9-11' stroke='white' stroke-width='3.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="#/">
+    <span class="logo"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="currentColor"/><path d="M9 17l5 5 9-11" stroke="#fff" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+    <span>RecallReach</span>
+  </a>
+  <nav class="tabs">
+    <a href="#/" data-tab="inbox">Recalls</a>
+    <a href="#/scan" data-tab="scan">Scan barcode</a>
+    <a href="#/accuracy" data-tab="accuracy">Accuracy</a>
+    <a href="#/audit" data-tab="audit">Audit trail</a>
+  </nav>
+  <div class="right">
+    <span id="mode" class="mode" title="LLM mode"></span>
+    <button id="kill" class="kill" title="Kill switch: stop every agent call and action">
+      <span class="knob"></span><span class="kl">Kill switch</span>
+    </button>
+  </div>
+</header>
+<div id="killbar" class="killbar" hidden>Kill switch is ON. The AI agent does not run, no new recalls are taken in, and nothing can be approved or executed.</div>
+<main id="app" aria-live="polite"></main>
+<footer class="foot">
+  Demo data: <a href="https://physionet.org/content/mimic-iv-demo/2.2/" target="_blank" rel="noopener">MIMIC-IV Clinical Database Demo v2.2</a> (100 real de-identified patients, dates shifted, ODbL) ·
+  <a href="https://open.fda.gov/apis/drug/enforcement/" target="_blank" rel="noopener">openFDA drug enforcement</a> ·
+  <a href="https://data.medicaid.gov/" target="_blank" rel="noopener">CMS Medicaid State Drug Utilization Data</a>.
+  Probabilities are estimates. Not for clinical use.
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

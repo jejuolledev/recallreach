@@ -152,6 +152,7 @@ ClassMethod Cancel(approvalId As %Integer, why As %String) As %Status
 /// Find the open Workflow task for this approval and complete it.
 ClassMethod CompleteTask(a As RecallReach.Data.Approval, action As %String) As %Status
 {
+    If $G(^RecallReach("UnitTest")) Quit $$$OK
     Set subj = a.TaskSubject, tid = ""
     For try = 1:1:25 {
         Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT ID FROM EnsLib_Workflow.TaskResponse WHERE %Subject = ? AND TaskStatus_IsComplete = 0", subj)

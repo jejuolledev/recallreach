@@ -1,0 +1,17 @@
+services:
+  iris:
+    build:
+      context: .
+      args:
+        IRIS_IMAGE: ${IRIS_IMAGE:-intersystems/irishealth-community:2027.1.0AI.109.0}
+    image: recallreach:latest
+    container_name: recallreach
+    restart: unless-stopped
+    ports:
+      - "${RR_PORT:-52795}:52773"   # web: http://localhost:52795/recallreach/
+      - "${RR_SUPERSERVER_PORT:-51795}:1972"
+    environment:
+      # leave empty for replay mode (no key, deterministic); set it in .env for live mode
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - RR_MODEL=${RR_MODEL:-claude-haiku-5-5}
+      - RR_SPEND_CAP_USD=${RR_SPEND_CAP_USD:-5}
