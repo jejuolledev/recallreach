@@ -83,9 +83,11 @@ ClassMethod Messages() As %Status
     Set content = "", file = ##class(RecallReach.Core.Config).#RECORDDIR_"/"_rn_".json"
     If ##class(%File).Exists(file) {
         Try {
-            Set rec = {}.%FromJSONFile(file)
+            Set fs = ##class(%Stream.FileCharacter).%New()
+            Set fs.TranslateTable = "UTF8", fs.Filename = file
+            Set rec = {}.%FromJSON(fs)
             Set obj = {}.%FromJSON(##class(RecallReach.Core.Py).StripFences(rec.content))
-            Set obj."_replay_source" = "replay-recorded"
+            Set obj."_replay_source" = "replay-recorded", obj."_recorded_at" = $E(rec."recorded_at", 1, 10), obj."_recorded_model" = rec.model
             Set content = obj.%ToJSON()
         } Catch { Set content = "" }
     }

@@ -154,11 +154,13 @@ ClassMethod Accuracy(dataDir As %String, recordDir As %String) As %String [ Lang
     bench = [recs[k] for k in meta["benchmark"] if k in recs]
     out = {"benchmark_size": len(bench), "reference": accuracy.run_reference(bench), "llm": None}
     rows = []
+    info = ""
     if recordDir and os.path.isdir(recordDir):
         for r in bench:
             p = os.path.join(recordDir, r["recall_number"] + ".json")
             if os.path.exists(p):
                 rec = json.load(open(p))
+                info = info or "%s, recorded %s" % (rec.get("model", "?"), str(rec.get("recorded_at", ""))[:10])
                 try:
                     v = extract.validate(r, extract.parse_json_reply(rec.get("content", "")))
                     rows.append(accuracy.score_one(r, v))
@@ -168,7 +170,7 @@ ClassMethod Accuracy(dataDir As %String, recordDir As %String) As %String [ Lang
                                  "found_any": False, "ingredient_hit": False, "ingredient": "(invalid JSON)",
                                  "fda_generic": ""})
     if rows:
-        out["llm"] = accuracy.summarize(rows, "AI Hub agent (recorded live replies)")
+        out["llm"] = accuracy.summarize(rows, "AI Hub agent with " + info)
     return json.dumps(out)
 }
 

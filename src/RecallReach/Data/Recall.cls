@@ -33,6 +33,9 @@ Property ExtractorSource As %String;
 
 Property Model As %String;
 
+/// date of the live model reply (live run, or the recording that replay used)
+Property RecordedAt As %String;
+
 Property Action As %String;
 
 Property Rationale As %String(MAXLEN = 600);

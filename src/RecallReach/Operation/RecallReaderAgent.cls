@@ -48,7 +48,8 @@ Method Read(req As RecallReach.Msg.AgentRequest, Output resp As RecallReach.Msg.
     Set source = "llm"
     If mode = "replay" {
         Set source = "rule-based"
-        Try { Set j = {}.%FromJSON(content) Set:j."_replay_source"'="" source = j."_replay_source" } Catch {}
+        Set recAt = "", recModel = ""
+        Try { Set j = {}.%FromJSON(content) Set:j."_replay_source"'="" source = j."_replay_source" Set recAt = j."_recorded_at", recModel = j."_recorded_model" } Catch {}
     } Else {
         Do ..Record(req.RecallNumber, content, inTok, outTok)
     }
@@ -66,11 +67,11 @@ Method Read(req As RecallReach.Msg.AgentRequest, Output resp As RecallReach.Msg.
     If req.%Extends("RecallReach.Msg.AgentRequest") && (rec.Status '= "pool") {
         Do rec.ExtractionJSON.Clear()
         Do rec.ExtractionJSON.Write(vjson)
-        Set rec.ExtractorSource = source, rec.Model = resp.Model, rec.Action = v.action, rec.Rationale = v.rationale, rec.LowConfidence = v."low_confidence"
+        Set rec.ExtractorSource = source, rec.Model = $S($G(recModel)'="":recModel, 1:resp.Model), rec.RecordedAt = $S(mode="live":$E(##class(RecallReach.Core.Config).Now(),1,10), 1:$G(recAt)), rec.Action = v.action, rec.Rationale = v.rationale, rec.LowConfidence = v."low_confidence"
         Set rec.Depth = v.depth.value, rec.DepthStated = ''v.depth.stated, rec.DepthBasis = $E(v.depth.basis, 1, 400)
         Do rec.%Save()
         Set what = $CASE(v.action, "hold_and_contact":"contact patients", "stock_check":"shelf check only, no patient calls", :"no action (never dispensed here)")
-        Set by = $S(mode="live":"model "_resp.Model, source="replay-recorded":"recorded model reply (replay)", 1:"rule-based replay, no LLM call")
+        Set by = $S(mode="live":"live model "_resp.Model, source="replay-recorded":"replay of recorded "_$G(recModel)_" output from "_$G(recAt)_", no new call", 1:"rule-based replay, no LLM call")
         Do ##class(RecallReach.Data.Audit).Log("AI Hub agent", "agent.decided", req.RecallNumber,
             "action="_v.action_"; depth="_v.depth.value_$S(v.depth.stated:" (stated)", 1:" (inferred)")_"; "_v.rationale_" (source: "_source_", "_v."low_confidence"_" low-confidence fields, "_inTok_"+"_outTok_" tokens, $"_$FN(cost,"",5)_")", ..%SessionId,
             "Agent decided: "_what_". "_v.rationale_" ["_by_"]")
@@ -85,6 +86,7 @@ Method Record(recall As %String, content As %String, inTok As %Integer, outTok A
         Set dir = ##class(RecallReach.Core.Config).#RECORDDIR
         Do ##class(%File).CreateDirectoryChain(dir)
         Set f = ##class(%Stream.FileCharacter).%New()
+        Set f.TranslateTable = "UTF8"
         Set f.Filename = dir_"/"_recall_".json"
         Set o = {"recall_number": (recall), "model": (..Adapter.Agent.Model), "recorded_at": (##class(RecallReach.Core.Config).Now()), "input_tokens": (inTok), "output_tokens": (outTok), "content": (content)}
         Do f.Write(o.%ToJSON())

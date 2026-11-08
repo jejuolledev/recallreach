@@ -20,9 +20,10 @@ until curl -fs "http://127.0.0.1:$PORT/recallreach/api/status" 2>/dev/null | gre
   i=$((i + 1)); [ $i -gt 60 ] && { echo "The app did not come up in live mode."; exit 1; }
   sleep 2
 done
-echo "== live mode on; sending $N benchmark recalls to the AI Hub agent =="
+echo "== live mode on; sending $N benchmark recalls and the demo recalls to the AI Hub agent =="
 docker compose exec -T iris iris session IRIS -U USER <<EOS
 do ##class(RecallReach.Core.Bench).Run($N)
+do ##class(RecallReach.Core.Bench).Run(50, "featured")
 halt
 EOS
 mkdir -p data/recordings

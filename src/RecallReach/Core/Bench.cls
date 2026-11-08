@@ -3,12 +3,13 @@
 Class RecallReach.Core.Bench
 {
 
-ClassMethod Run(n As %Integer = 300) As %Status
+/// list = "benchmark" (300 graded recalls) or "featured" (the demo inbox and queue, so replay shows real model answers)
+ClassMethod Run(n As %Integer = 300, list As %String = "benchmark") As %Status
 {
     If ##class(RecallReach.Core.Config).Mode() '= "live" Write "ANTHROPIC_API_KEY is not set: nothing to measure.", ! Quit $$$OK
     Set meta = {}.%FromJSON(^RecallReach("Meta"))
     $$$QuitOnError(##class(Ens.Director).CreateBusinessService("BenchmarkRunner", .svc))
-    Set it = meta.benchmark.%GetIterator(), done = 0, fail = 0
+    Set it = $S(list="featured":meta.featured, 1:meta.benchmark).%GetIterator(), done = 0, fail = 0
     While it.%GetNext(.i, .rn) && (done < n) {
         If ##class(%File).Exists(##class(RecallReach.Core.Config).#RECORDDIR_"/"_rn_".json") Continue
         If ##class(RecallReach.Core.Config).Spent() >= ##class(RecallReach.Core.Config).SpendCap() Write "spend cap reached", ! Quit

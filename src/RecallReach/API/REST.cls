@@ -65,7 +65,15 @@ ClassMethod Status() As %Status
         "killswitch": ($classmethod(cfg, "IsKilled")), "spent_usd": ($classmethod(cfg, "Spent")), "spend_cap_usd": ($classmethod(cfg, "SpendCap")),
         "threshold": ($classmethod(cfg, "Threshold")), "approval_seconds": (##class(RecallReach.Core.Config).#APPROVALSECONDS),
         "iris": ($ZV), "namespace": ($NAMESPACE),
-        "production_running": (##class(Ens.Director).IsProductionRunning()), "queue_left": 0}
+        "production_running": (##class(Ens.Director).IsProductionRunning()), "queue_left": 0, "recordings": 0, "recorded_at": ""}
+    // replay mode: how many recorded live replies ship, and from when
+    Set rs = ##class(%ResultSet).%New("%File:FileSet")
+    If rs.Execute(##class(RecallReach.Core.Config).#RECORDDIR, "*.json") {
+        While rs.Next() {
+            Set o.recordings = o.recordings + 1
+            If o."recorded_at" = "" Try { Set fs = ##class(%Stream.FileCharacter).%New(), fs.TranslateTable = "UTF8", fs.Filename = rs.Get("Name") Set o."recorded_at" = $E({}.%FromJSON(fs)."recorded_at", 1, 10) } Catch {}
+        }
+    }
     Set meta = {}.%FromJSON($G(^RecallReach("Meta"), "{}"))
     If $ISOBJECT(meta.queue) {
         Set n = 0, it = meta.queue.%GetIterator()
@@ -81,7 +89,7 @@ ClassMethod Row(r As RecallReach.Data.Recall) As %DynamicObject
         "product": (r.ProductDescription), "reason": (r.Reason), "status": (r.Status), "arrived_at": (r.ArrivedAt),
         "report_date": (r.ReportDate), "initiation_date": (r.InitiationDate), "action": (r.Action), "rationale": (r.Rationale),
         "shown": (r.PatientsShown), "hidden": (r.PatientsHidden), "top_p": (r.TopP), "top_subject": (r.TopSubject),
-        "source": (r.ExtractorSource), "model": (r.Model), "low_confidence": (r.LowConfidence), "session_id": (r.SessionId), "error": (r.Error),
+        "source": (r.ExtractorSource), "model": (r.Model), "recorded_at": (r.RecordedAt), "low_confidence": (r.LowConfidence), "session_id": (r.SessionId), "error": (r.Error),
         "depth": (r.Depth), "depth_stated": (''r.DepthStated), "depth_basis": (r.DepthBasis),
         "shelf_task": ($S(r.ShelfTaskJSON'="":{}.%FromJSON(r.ShelfTaskJSON), 1:"")), "shelf_done_at": (r.ShelfDoneAt)}
 }
