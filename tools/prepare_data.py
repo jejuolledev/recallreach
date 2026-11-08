@@ -17,9 +17,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "python"))
 from recallreach_core import ndc as ndcmod  # noqa: E402
 
-DEMO_RECALL = "D-1226-2015"
+# first recall of "Simulate new FDA recall": consumer level (contamination), so it goes the patient-contact way
+DEMO_RECALL = "D-0464-2017"
+# the barcode the demo pharmacist scanned when filling patient 10003400 (recalled lot 427900)
+DEMO_SAMPLE = {"ndc11": "66689040150", "lot": "427900", "expiry": "2017-11-30", "dispense_id": 6118, "subject_id": "10003400"}
 # already processed when the demo starts (shown in the inbox as history)
-HISTORY = ["D-0668-2016", "D-1467-2016", "D-0013-2018", "D-0464-2017", "D-1223-2015", "D-0793-2017"]
+HISTORY = ["D-0668-2016", "D-1467-2016", "D-0013-2018", "D-1226-2015", "D-1223-2015", "D-0793-2017"]
 # delivered one by one by "Simulate new FDA recall" (first = the video recall)
 QUEUE = [DEMO_RECALL, "D-1695-2012", "D-0010-2016", "D-0123-2018", "D-1208-2015", "D-0648-2016"]
 
@@ -77,7 +80,7 @@ def main(src, out):
                                                    "manufacturer_name", "substance_name", "route")}
         slim.append(s)
     slim.sort(key=lambda s: s["recall_number"])
-    meta = {"demo_recall": DEMO_RECALL, "history": HISTORY, "queue": QUEUE, "featured": HISTORY + QUEUE, "mimic_hits": sorted(hits), "benchmark": sorted(r["recall_number"] for r in bench),
+    meta = {"demo_recall": DEMO_RECALL, "demo_sample": DEMO_SAMPLE, "history": HISTORY, "queue": QUEUE, "featured": HISTORY + QUEUE, "mimic_hits": sorted(hits), "benchmark": sorted(r["recall_number"] for r in bench),
             "openfda_last_updated": "2026-11-03", "openfda_total": len(allr)}
     for name, obj in (("patients.json", patients), ("dispenses.json", disp), ("recalls.json", slim), ("meta.json", meta)):
         with open(os.path.join(out, name), "w") as f:

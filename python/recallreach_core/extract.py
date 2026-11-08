@@ -23,19 +23,28 @@ FIELDS = ["ingredient", "strength", "form", "manufacturer", "ndcs", "lots",
 SYSTEM_PROMPT = """You are RecallReach's recall-reading agent inside an InterSystems IRIS interoperability production.
 You read one FDA drug recall notice (free text) and decide two things:
 1. What exact product is recalled (fields below), quoting evidence.
-2. What the pharmacy should do: "hold_and_contact" (patients may hold an affected unit),
-   "stock_check" (pull shelf stock, no patient contact) or "no_action".
+2. How deep the recall goes and what the pharmacy should do:
+   "hold_and_contact" (consumer-level recall: patients may hold an affected unit),
+   "stock_check" (retail or wholesale level: pull the lots from the shelf, no patient contact) or "no_action".
 
 Steps:
 1. Read the notice and extract the fields.
-2. Call the LookupDispensed tool ONCE with the NDCs you found (comma separated, as printed) and the ingredient,
+2. Recall depth. If the notice says "consumer level", "patient level" or "user level", depth is "consumer".
+   If it says "retail", "pharmacy" or "hospital level", depth is "retail"; "wholesale" or "distributor level" is "wholesale".
+   Set "stated": true and quote the words as evidence. Most FDA enforcement notices do not state the depth: then set
+   "stated": false, leave evidence empty and use this rule:
+   - Class I: consumer.
+   - Class II: consumer only if the reason names a direct risk to the patient (non-sterile, contamination, particulate
+     or foreign matter, wrong drug or wrong label/barcode, super- or sub-potent dose); otherwise retail.
+   - Class III: retail.
+3. Call the LookupDispensed tool ONCE with the NDCs you found (comma separated, as printed) and the ingredient,
    to learn whether this pharmacy ever dispensed the recalled product. It returns counts only.
-3. Decide:
-   - "hold_and_contact" when it is a Class I or II recall and the pharmacy dispensed a recalled NDC
+4. Decide:
+   - "no_action" when the pharmacy never dispensed this ingredient;
+   - "hold_and_contact" only when depth is consumer AND the pharmacy dispensed a recalled NDC
      (or the same ingredient and strength when the notice lists no NDC);
-   - "stock_check" for Class III, or when only other strengths/products of the ingredient were dispensed;
-   - "no_action" when the pharmacy never dispensed this ingredient.
-   Put the tool's counts in the rationale.
+   - "stock_check" in every other case.
+   Put the depth and the tool's counts in the rationale.
 
 Rules:
 - Use ONLY the notice text and the tool result. Never invent an NDC, lot or date that is not written in it.
@@ -53,7 +62,56 @@ JSON shape:
  "lots":[{"value":"","expiry":"YYYY-MM-DD or empty","evidence":""}],
  "all_lots":false,
  "distribution":{"nationwide":true,"states":["MA"],"evidence":"","confidence":""},
+ "depth":{"value":"consumer|retail|wholesale","stated":false,"evidence":""},
  "decision":{"action":"hold_and_contact|stock_check|no_action","rationale":"one sentence"}}"""
+
+
+# ------------------------------------------------------------ recall depth --
+# openFDA enforcement records have no "depth" field (consumer / retail /
+# wholesale level).  A few notices say it in the text; for the rest we infer
+# it from the classification and the reason, with this rule (shown in the UI).
+DEPTH_STATED = re.compile(r"\b(consumer|patient|user|retail|pharmacy|hospital|wholesale|wholesaler|distributor)[- ]level\b", re.I)
+DEPTH_WORD = {"consumer": "consumer", "patient": "consumer", "user": "consumer", "retail": "retail",
+              "pharmacy": "retail", "hospital": "retail", "wholesale": "wholesale", "wholesaler": "wholesale",
+              "distributor": "wholesale"}
+PATIENT_RISK = re.compile(
+    r"steril|non-?sterile|contamina|microb|bacteri|fung|mold|yeast|burkholderia|endotoxin|particulate|foreign"
+    r"|glass|metal (?:particle|fragment|shaving)|mislabel|label mix|mix-?up|wrong (?:drug|product|tablet|capsule|strength|label|barcode)"
+    r"|incorrect (?:barcode|label|strength|drug|product)|super-?potent|sub-?potent|overdos|cross-contamina", re.I)
+
+
+def recall_depth(recall):
+    """{"value": consumer|retail|wholesale, "stated": bool, "evidence": str, "basis": str}"""
+    text = notice_text(recall)
+    m = DEPTH_STATED.search(text)
+    if m:
+        v = DEPTH_WORD[m.group(1).lower()]
+        return {"value": v, "stated": True, "evidence": m.group(0),
+                "basis": "the notice says \"%s\"" % m.group(0), "short": "stated in the notice"}
+    cls = recall.get("classification", "")
+    reason = recall.get("reason_for_recall", "") or ""
+    if cls == "Class I":
+        return {"value": "consumer", "stated": False, "evidence": "",
+                "basis": "not stated in the notice, so inferred: Class I recalls usually go to the consumer level",
+                "short": "inferred from Class I"}
+    if cls == "Class II":
+        r = PATIENT_RISK.search(reason)
+        if r:
+            word = re.search(r"[\w-]*%s[\w-]*" % re.escape(r.group(0)), reason, re.I)
+            word = word.group(0) if word else r.group(0)
+            return {"value": "consumer", "stated": False, "evidence": "",
+                    "basis": "not stated in the notice, so inferred: Class II and the reason names a direct patient risk (\"%s\")" % word,
+                    "short": "inferred from Class II + patient-risk reason"}
+        return {"value": "retail", "stated": False, "evidence": "",
+                "basis": "not stated in the notice, so inferred: Class II and the reason is a quality or process problem, not a direct patient risk",
+                "short": "inferred from Class II + quality-only reason"}
+    return {"value": "retail", "stated": False, "evidence": "",
+            "basis": "not stated in the notice, so inferred: %s recalls usually stop at the retail level" % (cls or "unclassified"),
+            "short": "inferred from %s" % (cls or "no classification")}
+
+
+def plural(n, word, many=None):
+    return "%d %s" % (n, word if n == 1 else (many or word + "s"))
 
 
 def notice_text(recall):
@@ -243,28 +301,31 @@ def reference_extract(recall):
     out["distribution"] = {"nationwide": nationwide, "states": states, "evidence": dist[:200],
                            "confidence": "high" if (nationwide or states) else "low"}
 
-    cls = recall.get("classification", "")
-    if cls in ("Class I", "Class II"):
-        action, why = "hold_and_contact", "%s recall of a dispensed product: patients may still hold affected units." % cls
-    elif cls == "Class III":
-        action, why = "stock_check", "Class III: unlikely to cause harm, pull shelf stock without contacting patients."
+    dep = recall_depth(recall)
+    out["depth"] = {"value": dep["value"], "stated": dep["stated"], "evidence": dep["evidence"]}
+    if dep["value"] == "consumer":
+        action, why = "hold_and_contact", "Consumer-level recall (%s): patients may still hold affected units." % dep["short"]
     else:
-        action, why = "stock_check", "Classification not stated: check stock first."
+        action, why = "stock_check", "%s-level recall (%s): pull the lots from the shelf, no patient contact." % (dep["value"].capitalize(), dep["short"])
     out["decision"] = {"action": action, "rationale": why}
     return out
 
 
 def reference_decide(recall, extraction, tool_result):
     """Rule-based twin of the agent's decision step, given the LookupDispensed result."""
-    cls = recall.get("classification", "")
     ndc_fills = sum(int(x.get("fills") or 0) for x in (tool_result.get("ndcs") or []))
     ndc_pats = sum(int(x.get("patients") or 0) for x in (tool_result.get("ndcs") or []))
     ing_fills = int(tool_result.get("ingredient_fills") or 0)
+    dep = recall_depth(recall)
+    counts = "LookupDispensed: %s of the recalled NDCs for %s (%s of the ingredient)" % (
+        plural(ndc_fills, "fill"), plural(ndc_pats, "patient"), plural(ing_fills, "fill"))
     if ndc_fills == 0 and ing_fills == 0:
         return {"action": "no_action", "rationale": "LookupDispensed: this pharmacy never dispensed %s (0 fills)." % (extraction.get("ingredient", {}).get("value") or "this product")}
-    if cls in ("Class I", "Class II") and (ndc_fills > 0 or not extraction.get("ndcs")):
-        return {"action": "hold_and_contact", "rationale": "%s recall; LookupDispensed: %d fills of the recalled NDCs for %d patients (%d fills of the ingredient)." % (cls, ndc_fills, ndc_pats, ing_fills)}
-    return {"action": "stock_check", "rationale": "%s; LookupDispensed: %d fills of the recalled NDCs, %d fills of the ingredient in other products/strengths: check stock, no patient calls." % (cls or "Unclassified", ndc_fills, ing_fills)}
+    if dep["value"] == "consumer" and (ndc_fills > 0 or not extraction.get("ndcs")):
+        return {"action": "hold_and_contact", "rationale": "Consumer-level recall (%s). %s." % (dep["short"], counts)}
+    if dep["value"] == "consumer":
+        return {"action": "stock_check", "rationale": "Consumer-level recall, but the recalled NDCs were never dispensed here. %s: check the shelf, no patient calls." % counts}
+    return {"action": "stock_check", "rationale": "%s-level recall (%s). %s. Pull the lots from the shelf; no patient calls." % (dep["value"].capitalize(), dep["short"], counts)}
 
 
 # ------------------------------------------------------------ validation --
@@ -357,8 +418,27 @@ def validate(recall, data):
     dv = "Nationwide" if dist.get("nationwide") else (", ".join(states) if states else "")
     add("distribution", "Distribution", dv, (dist.get("evidence") or "").strip(), dist.get("confidence"))
 
+    # recall depth: trust the agent only when it quotes the notice; else the documented rule
+    rule = recall_depth(recall)
+    dd = data.get("depth") if isinstance(data.get("depth"), dict) else {}
+    depth = dict(rule)
+    if dd.get("stated") and dd.get("value") in ("consumer", "retail", "wholesale") and dd.get("evidence"):
+        s_, e_ = _find_span(text, dd["evidence"])
+        if s_ >= 0:
+            depth = {"value": dd["value"], "stated": True, "evidence": dd["evidence"],
+                     "basis": "the notice says \"%s\"" % dd["evidence"], "short": "stated in the notice"}
+    add("depth", "Recall depth", depth["value"].capitalize() + " level" + ("" if depth["stated"] else " (inferred)"),
+        depth.get("evidence", ""), "high" if depth["stated"] else "low", {"basis": depth["basis"]})
+    if not depth["stated"]:
+        fields[-1]["note"] = depth["basis"]
+
     dec = data.get("decision") or {}
     action = dec.get("action") if dec.get("action") in ("hold_and_contact", "stock_check", "no_action") else "stock_check"
+    rationale = (dec.get("rationale") or "")[:500]
+    if action == "hold_and_contact" and depth["value"] != "consumer":
+        # guard rail: patients are contacted only for consumer-level recalls
+        action = "stock_check"
+        rationale = ("%s-level recall: changed to a shelf check (patients are contacted only for consumer-level recalls). " % depth["value"].capitalize() + rationale)[:500]
     return {
         "fields": fields,
         "ingredient": (data.get("ingredient") or {}).get("value", "") if isinstance(data.get("ingredient"), dict) else str(data.get("ingredient") or ""),
@@ -370,7 +450,8 @@ def validate(recall, data):
         "nationwide": bool(dist.get("nationwide")),
         "states": states,
         "action": action,
-        "rationale": (dec.get("rationale") or "")[:300],
-        "low_confidence": sum(1 for f in fields if f["confidence"] == "low"),
+        "rationale": rationale,
+        "depth": depth,
+        "low_confidence": sum(1 for f in fields if f["confidence"] == "low" and f["key"] != "depth"),
         "text": text,
     }

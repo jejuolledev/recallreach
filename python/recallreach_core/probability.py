@@ -4,8 +4,8 @@ P(dispense) = product_match x time_overlap x lot_share x region
 P(patient)  = 1 - prod(1 - P(dispense))        (several fills -> more chances)
 
 If the dispense has a barcode-scanned lot, the answer is exact: 1.0 when the lot
-is on the recall, 0.0 when it is not.  Everything else is an ESTIMATE and is
-labelled as such in the UI with the numbers and sources used.
+is on the recall, 0.0 when it is not.  Everything else is an ESTIMATE, capped
+at 99%, and labelled as such in the UI with the numbers and sources used.
 """
 import datetime as dt
 import re
@@ -20,6 +20,7 @@ NO_NDC_SAME_STRENGTH = 0.25     # record has no NDC: assume 1 of ~4 labelers
 REGION_OUTSIDE = 0.05
 REGION_UNKNOWN = 0.7
 DEFAULT_THRESHOLD = 0.05
+ESTIMATE_CAP = 0.99             # an estimate is never shown as certain; only a scanned lot is exact
 PHARMACY_STATE = "MA"           # MIMIC-IV comes from Beth Israel Deaconess, Boston
 
 
@@ -163,10 +164,11 @@ def lot_share(recall, extraction, ndcs11, sdud, win):
         ratio = units / vol
         share = min(1.0, ratio)
         return share, {
-            "basis": "recalled %s%s = %s units vs %s Medicaid units dispensed for this NDC in %s..%s%s"
+            "basis": "recalled %s%s = %s units vs %s Medicaid units dispensed for this NDC between %s and %s%s"
                      % (raw, (" x %d per container" % per) if per else "", "{:,}".format(units),
                         "{:,.0f}".format(vol), a.isoformat(), b.isoformat(),
-                        "; capped at 100%" if ratio > 1 else ""),
+                        ". The recall is larger than the Medicaid volume, so this factor is capped at 1.0 and does not narrow the estimate" if ratio > 1 else ""),
+            "capped": ratio > 1,
             "caveat": "Medicaid covers only part of US dispensing, so the real share is lower than this ratio.",
             "source": "openFDA product_quantity + CMS Medicaid State Drug Utilization Data",
             "suppressed_quarters": suppressed,
@@ -248,7 +250,7 @@ def score_dispense(recall, extraction, dispense, patient, sdud, win=None):
     res["factors"] = [
         {"name": "Product match", "value": pf, "why": pwhy, "source": "FDA notice NDCs vs dispensing record"},
         {"name": "Time on shelf", "value": round(tf, 4),
-         "why": "real fill date is somewhere in %s..%s (MIMIC dates are shifted); %d%% of that overlaps the lot window %s..%s (%s)"
+         "why": "the real fill date is somewhere between %s and %s (MIMIC shifts dates); %d%% of that range falls in the lot window, %s to %s (%s)"
                 % (res["window"][0], res["window"][1], round(tf * 100), win[0].isoformat() if win[0] else "?",
                    win[1].isoformat() if win[1] else "?", win[2]),
          "source": "MIMIC-IV anchor_year_group + FDA lot/expiry dates"},
@@ -317,7 +319,11 @@ def rank_patients(recall, extraction, dispenses, patients, sdud=None, threshold=
     rows = []
     for sid, items in per.items():
         p = patient_probability(items, win)
-        exact = all(s["exact"] for s, _ in items) or p >= 1.0
+        # exact only when a scanned barcode lot decides it, never because an estimate reached 100%
+        confirmed = any(s["exact"] and s["p"] >= 1.0 for s, _ in items)
+        exact = confirmed or all(s["exact"] for s, _ in items)
+        if not exact:
+            p = min(p, ESTIMATE_CAP)
         best_s, best_d = max(items, key=lambda x: (x[0]["p"], x[1].get("starttime") or ""))
         badges = []
         for s, _ in items:

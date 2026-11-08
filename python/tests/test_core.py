@@ -84,7 +84,10 @@ class TestExtraction(unittest.TestCase):
         self.assertEqual(v["ndcs"], ["68084006001", "68084006011"])
         self.assertEqual(v["lots"], [{"lot": "131928", "expiry": "2015-09-30"}])
         self.assertTrue(v["nationwide"])
-        self.assertEqual(v["action"], "hold_and_contact")
+        # "did not adequately investigate customer complaints": a process problem, so retail level, shelf check
+        self.assertEqual(v["depth"]["value"], "retail")
+        self.assertFalse(v["depth"]["stated"])
+        self.assertEqual(v["action"], "stock_check")
         self.assertEqual(v["low_confidence"], 0)
         for f in v["fields"]:
             self.assertEqual(v["text"][f["start"]:f["end"]].lower(), f["evidence"].lower())
@@ -122,6 +125,48 @@ class TestExtraction(unittest.TestCase):
     def test_class3_is_stock_check(self):
         v = extract.reference_extract(dict(LISINOPRIL, classification="Class III"))
         self.assertEqual(v["decision"]["action"], "stock_check")
+
+
+class TestRecallDepth(unittest.TestCase):
+    def test_stated_depth_wins(self):
+        r = dict(LISINOPRIL, reason_for_recall="Subpotent drug; recall to the retail level")
+        d = extract.recall_depth(r)
+        self.assertEqual((d["value"], d["stated"], d["evidence"]), ("retail", True, "retail level"))
+        self.assertEqual(extract.recall_depth(dict(LISINOPRIL, code_info="Lot 1. Recalled to the consumer level."))["value"], "consumer")
+        self.assertEqual(extract.recall_depth(dict(LISINOPRIL, code_info="wholesale level only"))["value"], "wholesale")
+
+    def test_inferred_depth_rule(self):
+        self.assertEqual(extract.recall_depth(dict(LISINOPRIL, classification="Class I"))["value"], "consumer")
+        risk = dict(LISINOPRIL, reason_for_recall="CGMP Deviations: water may have been contaminated with Burkholderia cepacia.")
+        self.assertEqual(extract.recall_depth(risk)["value"], "consumer")
+        self.assertEqual(extract.recall_depth(LISINOPRIL)["value"], "retail")
+        self.assertEqual(extract.recall_depth(dict(LISINOPRIL, classification="Class III"))["value"], "retail")
+        self.assertIn("inferred", extract.recall_depth(LISINOPRIL)["basis"])
+
+    def test_decision_follows_depth(self):
+        tool = {"ndcs": [{"fills": 11, "patients": 7}], "ingredient_fills": 30}
+        self.assertEqual(extract.reference_decide(LISINOPRIL, {"ndcs": ["x"]}, tool)["action"], "stock_check")
+        risk = dict(LISINOPRIL, classification="Class I")
+        self.assertEqual(extract.reference_decide(risk, {"ndcs": ["x"]}, tool)["action"], "hold_and_contact")
+        none = {"ndcs": [{"fills": 0, "patients": 0}], "ingredient_fills": 0}
+        self.assertEqual(extract.reference_decide(risk, {"ndcs": ["x"]}, none)["action"], "no_action")
+
+    def test_singular_counts(self):
+        tool = {"ndcs": [{"fills": 1, "patients": 1}], "ingredient_fills": 1}
+        why = extract.reference_decide(dict(LISINOPRIL, classification="Class I"), {"ndcs": ["x"]}, tool)["rationale"]
+        self.assertIn("1 fill of the recalled NDCs for 1 patient (1 fill", why)
+
+    def test_guard_rail_no_patient_contact_below_consumer_level(self):
+        data = extract.reference_extract(LISINOPRIL)
+        data["decision"] = {"action": "hold_and_contact", "rationale": "call everyone"}
+        v = extract.validate(LISINOPRIL, data)
+        self.assertEqual(v["action"], "stock_check")
+
+    def test_agent_stated_depth_needs_evidence(self):
+        data = extract.reference_extract(dict(LISINOPRIL, classification="Class I"))
+        data["depth"] = {"value": "retail", "stated": True, "evidence": "retail level"}   # not in the notice
+        v = extract.validate(dict(LISINOPRIL, classification="Class I"), data)
+        self.assertEqual(v["depth"]["value"], "consumer")
 
     def test_states_distribution(self):
         v = extract.validate(dict(LISINOPRIL, distribution_pattern="Distributed in CA, NV and Texas."),
@@ -201,6 +246,17 @@ class TestProbability(unittest.TestCase):
         self.assertEqual(out["total"], 4)
         for r in out["shown"] + out["hidden"]:
             self.assertTrue(0.0 <= r["p"] <= 1.0)
+            if not r["exact"]:
+                self.assertLessEqual(r["p"], probability.ESTIMATE_CAP)
+
+    def test_estimate_never_shown_as_exact(self):
+        # many fills, product 1.0 x lot share 1.0 x region 1.0: the estimate can reach 1.0, but it is not a scanned lot
+        disps = [self.disp(id=i, subject_id="A", starttime="2157-07-%02d 08:00:00" % (i + 1)) for i in range(11)]
+        row = probability.rank_patients(LISINOPRIL, self.v, disps, {"A": dict(PAT, anchor_year_group="2014-2014")},
+                                        {"68084006001": {"2014Q1": 1.0}}, 0)["shown"][0]
+        self.assertFalse(row["exact"])
+        self.assertLessEqual(row["p"], probability.ESTIMATE_CAP)
+        self.assertNotIn("Lot confirmed", row["badges"])
 
 
 class TestSharedShift(unittest.TestCase):
