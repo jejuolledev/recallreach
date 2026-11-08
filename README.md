@@ -7,7 +7,7 @@ When the FDA recalls a drug, RecallReach finds which pharmacy patients probably 
 **For judges (2 minutes)**
 1. Load the IRIS AI Hub image (see [Run it](#run-it)), then `docker compose up -d --build` and open http://localhost:52795/recallreach/index.html
 2. Press *Simulate new FDA recall*, open it, press *Find patients*, then *Ask pharmacist approval* and *Approve*.
-3. Real: MIMIC-IV demo patients, openFDA recalls, the IRIS production, tool calls, Workflow approval, audit. Replayed: with no API key (the default) the agent's replies come from a local rule-based endpoint, so no LLM is called. Live LLM accuracy has not been measured yet ([Run with your own key](#run-with-your-own-key)).
+3. Real: MIMIC-IV demo patients, openFDA recalls, the IRIS production, tool calls, Workflow approval, audit, and 312 replies from `claude-haiku-5-5` recorded on 2026-11-08 (the 300 benchmark recalls and all 13 demo recalls). Replayed: with no API key (the default) the agent gets those recorded Claude replies back from a local endpoint, so no model is called and nothing is spent. With a key it calls Claude live ([Run with your own key](#run-with-your-own-key)).
 
 ## What it does
 
@@ -102,7 +102,7 @@ Every LLM call is an `AgentRequest` / `AgentResponse` message pair: prompt, raw 
 
 ### Replay mode (no key)
 
-With no `ANTHROPIC_API_KEY`, the adapter creates the same AI Hub `anthropic` provider with `base_url` pointing to `/recallreach/replay/v1/` on this IRIS instance (local requests only). That endpoint speaks the Anthropic Messages API: it first asks for the `LookupDispensed` tool like the live model does, then answers with a recorded live reply for that recall if one exists in `data/recordings/`, or else with a deterministic rule-based reference reply. No recordings ship with this build. So `%AI.Agent.Chat`, tool execution, policies and sessions all run for real; the token counts in replay are estimates, not model usage. The UI says "Replay (rule-based, no LLM call)" instead of a model name.
+With no `ANTHROPIC_API_KEY`, the adapter creates the same AI Hub `anthropic` provider with `base_url` pointing to `/recallreach/replay/v1/` on this IRIS instance (local requests only). That endpoint speaks the Anthropic Messages API: it first asks for the `LookupDispensed` tool like the live model does, then answers with the recorded live reply for that recall from `data/recordings/` (312 ship: `claude-haiku-5-5`, 2026-11-08), or with a deterministic rule-based reference reply for a recall that has no recording. So `%AI.Agent.Chat`, tool execution, policies and sessions all run for real; the tool call is run again against the pharmacy records, and the token counts in replay are estimates, not model usage. The header says "Replay of recorded Claude outputs · 2026-11-08", and each recall says whether its answer is a recorded Claude reply or rule-based.
 
 ### The probability (an estimate, shown with its sources)
 
@@ -122,7 +122,7 @@ P(patient) = average over MIMIC's date shift of [ 1 - product(1 - P(fill)) ]
 
 - Only a scanned lot gives 100% ("exact"). An estimate is capped at 99% and shown rounded (5% steps above 10%, e.g. "≈55%"); the exact factors are in each row's "Why" panel.
 - A scan is saved only if the GTIN check digit is right and the barcode has a lot and an expiry; otherwise nothing is stored.
-- Lot share does little in practice: in 11 of the 12 demo recalls it is either capped at 1.0 (the recall is larger than the Medicaid volume) or the 50% default for liquids and injections; only D-0648-2016 gets a real ratio (0.76). So the ranking mostly comes from product match and time on shelf. The "Why" panel says which case applies.
+- Lot share does little in practice: in 12 of the 13 demo recalls it is either capped at 1.0 (the recall is larger than the Medicaid volume) or the 50% default for liquids and injections; only D-0648-2016 gets a real ratio (0.76). So the ranking mostly comes from product match and time on shelf. The "Why" panel says which case applies.
 - Rows under 5% are hidden below the list. Medicaid covers only part of US dispensing, so the lot share over-states the true share; each row's "Why" panel says so.
 
 ## Numbers you can check
@@ -132,7 +132,17 @@ P(patient) = average over MIMIC's date shift of [ 1 - product(1 - P(fill)) ]
 - D-1226-2015 (Lisinopril 5 mg, Class II, complaint-handling problem): retail level (inferred), shelf check for lot 131928. The tool still reports 11 orders of the recalled NDC for 7 patients; nobody is called.
 - Depth in the 647 shipped recalls: stated in the text for 2; inferred for the rest.
 - 372 of 18,076 openFDA drug recalls share an NDC with the 100 MIMIC demo patients.
-- **Accuracy** (Accuracy tab, 300 random recalls that carry FDA's NDC list, fixed seed): the rule-based reference extractor finds an FDA product NDC in **99.7%**, an exact package NDC in **99.7%**, extracts an NDC that FDA does not list in **0 of 300**, and its ingredient matches FDA's generic name in **81.7%** (brand names like "Kids' Cough and Chest Congestion" are its weak spot). Live LLM accuracy is not measured in this build.
+- **Accuracy** (Accuracy tab, 300 random recalls that carry FDA's NDC list, fixed seed; the extractor never sees that list):
+
+  | | Claude agent (`claude-haiku-5-5`, live run 2026-11-08) | Rule-based reference |
+  |---|---|---|
+  | Found an FDA product NDC | **99.3%** | 99.7% |
+  | Found an exact FDA package NDC | **99.3%** | 99.7% |
+  | Ingredient matches FDA's generic name | **98.0%** | 81.7% |
+  | Extracted an NDC that FDA does not list | **0 of 300** | 0 of 300 |
+
+  Claude's 0.4-point NDC gap is its 2 replies out of 300 that were not valid JSON (D-0354-2025, D-0842-2022); they are counted as misses, not retried. Its ingredient misses are listed on the page (e.g. it read "Insulin aspart" where FDA's generic name field says "WATER INJECTION"). The rule-based extractor's weak spot is brand names like "Kids' Cough and Chest Congestion".
+- **Cost of the live run:** 312 agent calls (the 300 benchmark recalls plus the 12 demo recalls that are not in the benchmark; the demo has 13 recalls and D-0010-2016 is in both), 739,862 input and 417,387 output tokens as reported by the API, **$0.28** at the list price of $0.10 / $0.50 per million tokens. About 6 s and $0.0009 per recall (two model turns with one tool call). The agent's decision matched the rule-based decision on all 13 demo recalls.
 
 ## Run with your own key
 
@@ -141,7 +151,7 @@ cp .env.example .env          # put your Anthropic key after ANTHROPIC_API_KEY= 
 ./tools/run_benchmark.sh      # or ./tools/run_benchmark.sh 20 for a short run
 ```
 
-The script restarts the container with the key (container environment only; the app never logs it, stores it or sends it to the browser, and the script does not print it), waits until the header says "Live AI Hub agent", sends the benchmark recalls to the agent, copies every reply to `data/recordings/`, and refreshes the Accuracy page, which then shows the LLM next to the rule-based numbers, misses included. Recalls you simulate in live mode are recorded too. Spend stops at `RR_SPEND_CAP_USD` (default $5); with `claude-haiku-5-5` the estimate is $0.001-0.002 per recall, about $0.5 for all 300. Commit `data/recordings/` to replay those replies without a key. Before live mode on a shared machine, change the `_SYSTEM` password: anyone with Management Portal access can read the container environment.
+The script restarts the container with the key (container environment only; the app never logs it, stores it or sends it to the browser, and the script does not print it), waits until the header says "Live AI Hub agent", sends the benchmark recalls and the demo recalls to the agent (recalls that already have a recording are skipped; delete `data/recordings/*.json` first for a fresh run), copies every reply to `data/recordings/`, and refreshes the Accuracy page, which shows Claude next to the rule-based numbers, misses included. Recalls you simulate in live mode are recorded too. Spend stops at `RR_SPEND_CAP_USD` (default $5); our run with `claude-haiku-5-5` cost about $0.0009 per recall, $0.28 for 312 calls. Commit `data/recordings/` to replay those replies without a key. Before live mode on a shared machine, change the `_SYSTEM` password: anyone with Management Portal access can read the container environment.
 
 ## Tests
 
@@ -179,7 +189,7 @@ The script restarts the container with the key (container environment only; the 
 - Recall depth is rarely in the openFDA text, so it is usually inferred by the rule above. A real FDA recall letter can say otherwise; the UI marks every inferred depth.
 - No inventory data: the shelf check lists what to pull but cannot say how many units are on hand.
 - MIMIC dates are shifted, so "when" is only known within a ~3-year window; this is why the time factor exists.
-- Live LLM accuracy was not measured in this build (no key at build time).
+- The live run was one pass of one model (`claude-haiku-5-5`) on 2026-11-08. A different model or a later run can give different numbers.
 - `module.xml` is written for IPM but was not installed with IPM in this environment (IPM is not in the AI Hub image); Docker is the tested path.
 
 ## Files
