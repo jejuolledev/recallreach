@@ -17,6 +17,7 @@ XData UrlMap [ XMLNamespace = "http://www.intersystems.com/urlmap" ]
   <Route Url="/recalls/:rn" Method="GET" Call="Recall" />
   <Route Url="/recalls/:rn/patients" Method="GET" Call="Patients" />
   <Route Url="/recalls/:rn/approval" Method="POST" Call="RequestApproval" />
+  <Route Url="/recalls/:rn/shelf-done" Method="POST" Call="ShelfDone" />
   <Route Url="/feed/next" Method="POST" Call="FeedNext" />
   <Route Url="/approvals/:token" Method="GET" Call="Approval" />
   <Route Url="/approvals/:token/approve" Method="POST" Call="Approve" />
@@ -80,7 +81,9 @@ ClassMethod Row(r As RecallReach.Data.Recall) As %DynamicObject
         "product": (r.ProductDescription), "reason": (r.Reason), "status": (r.Status), "arrived_at": (r.ArrivedAt),
         "report_date": (r.ReportDate), "initiation_date": (r.InitiationDate), "action": (r.Action), "rationale": (r.Rationale),
         "shown": (r.PatientsShown), "hidden": (r.PatientsHidden), "top_p": (r.TopP), "top_subject": (r.TopSubject),
-        "source": (r.ExtractorSource), "model": (r.Model), "low_confidence": (r.LowConfidence), "session_id": (r.SessionId), "error": (r.Error)}
+        "source": (r.ExtractorSource), "model": (r.Model), "low_confidence": (r.LowConfidence), "session_id": (r.SessionId), "error": (r.Error),
+        "depth": (r.Depth), "depth_stated": (''r.DepthStated), "depth_basis": (r.DepthBasis),
+        "shelf_task": ($S(r.ShelfTaskJSON'="":{}.%FromJSON(r.ShelfTaskJSON), 1:"")), "shelf_done_at": (r.ShelfDoneAt)}
 }
 
 ClassMethod Recalls() As %Status
@@ -162,6 +165,19 @@ ClassMethod RequestApproval(rn As %String) As %Status
     Quit ..Out(o, 201)
 }
 
+/// the pharmacist confirms the shelf check of a retail/wholesale-level recall is done
+ClassMethod ShelfDone(rn As %String) As %Status
+{
+    If ##class(RecallReach.Core.Config).IsKilled() Quit ..Err(423, "Kill switch is ON")
+    Set r = ##class(RecallReach.Data.Recall).RecallIdxOpen(rn)
+    If '$ISOBJECT(r) || (r.Status = "pool") Quit ..Err(404, "recall not found")
+    If r.Status '= "shelf_check" Quit ..Err(409, "This recall has no open shelf check (status "_r.Status_").")
+    Set r.Status = "shelf_done", r.ShelfDoneAt = ##class(RecallReach.Core.Config).Now()
+    $$$QuitOnError(r.%Save())
+    Do ##class(RecallReach.Data.Audit).Log("pharmacist (demo)", "shelf.done", rn, "shelf check done at "_r.ShelfDoneAt_" UTC", r.SessionId, "Shelf check done: the recalled lots were pulled from the shelf")
+    Quit ..Out(..Row(r))
+}
+
 ClassMethod Approval(token As %String) As %Status
 {
     Set a = ##class(RecallReach.Data.Approval).TokenIdxOpen(##class(RecallReach.Core.Approvals).Hash(token))
@@ -226,12 +242,17 @@ ClassMethod BarcodeRecord() As %Status
     Set ok = 0, it = o."ndc11_candidates".%GetIterator()
     While it.%GetNext(.i, .n) { Set:n=d.NDC ok = 1 }
     If 'ok Quit ..Err(409, "The barcode is for a different product (NDC) than this dispensing record.")
-    If o.lot = "" Quit ..Err(400, "The barcode has no lot number (10).")
+    If 'o."gtin_check_ok" Quit ..Err(400, "The GTIN check digit is wrong, so this scan may be misread. Nothing was saved: scan the box again.")
+    If o.lot = "" Quit ..Err(400, "The barcode has no lot number (10). Nothing was saved.")
+    If o.expiry = "" Quit ..Err(400, "The barcode has no expiry date (17). Nothing was saved: a lot is recorded only with its expiry.")
     Set d.Lot = $ZCVT(o.lot, "U"), d.LotExpiry = o.expiry, d.Serial = o.serial, d.GTIN = o.gtin, d.LotCapturedAt = ##class(RecallReach.Core.Config).Now()
     $$$QuitOnError(d.%Save())
-    Do ##class(RecallReach.Data.Audit).Log("pharmacist (demo)", "lot.captured", "", "fill "_d.DispenseId_" (patient "_d.SubjectId_"): NDC "_d.NDC_" lot "_d.Lot_" exp "_d.LotExpiry_" serial "_d.Serial)
-    // re-rank every arrived recall that lists this NDC so "Lot confirmed" shows up at once
-    Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT RecallNumber FROM RecallReach_Data.Recall WHERE Status IN ('ready','expired','rejected')")
+    Set pn = $E(d.NDC,1,5)_"-"_$E(d.NDC,6,9)_"-"_$E(d.NDC,10,11)
+    Do ##class(RecallReach.Data.Audit).Log("pharmacist (demo)", "lot.captured", "", "fill "_d.DispenseId_" (patient "_d.SubjectId_"): NDC "_d.NDC_" lot "_d.Lot_" exp "_d.LotExpiry_" serial "_d.Serial, "",
+        "Lot "_d.Lot_" (exp "_d.LotExpiry_") of NDC "_pn_" recorded for patient "_d.SubjectId_", fill "_d.DispenseId)
+    // re-rank every arrived consumer-level recall that lists this NDC so "Lot confirmed" shows up at once
+    // (also while an approval is pending or after it: the plan itself does not change, only the list's numbers)
+    Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT RecallNumber FROM RecallReach_Data.Recall WHERE Status IN ('ready','expired','rejected','stopped','awaiting_approval','approved')")
     While rs.%Next() {
         Set r = ##class(RecallReach.Data.Recall).RecallIdxOpen(rs.%Get("RecallNumber"))
         If ##class(RecallReach.Core.Config).ReadStream(r.ExtractionJSON) [ d.NDC {
@@ -250,9 +271,12 @@ ClassMethod BarcodeRecord() As %Status
 /// A printable sample barcode for the demo (the recalled lot of the video recall).
 ClassMethod BarcodeSample() As %Status
 {
-    Set ndc = $G(%request.Data("ndc", 1), "68084006001"), lot = $G(%request.Data("lot", 1), "131928"), exp = $G(%request.Data("exp", 1), "2015-09-30")
+    Set meta = {}.%FromJSON($G(^RecallReach("Meta"), "{}")), s = meta."demo_sample"
+    If '$ISOBJECT(s) Set s = {"ndc11": "66689040150", "lot": "427900", "expiry": "2017-11-30", "dispense_id": 6118, "subject_id": "10003400"}
+    Set ndc = $G(%request.Data("ndc", 1), s.ndc11), lot = $G(%request.Data("lot", 1), s.lot), exp = $G(%request.Data("exp", 1), s.expiry)
     Set raw = ##class(RecallReach.Core.Py).BuildGS1(ndc, lot, exp, "RR"_($R(900000)+100000))
-    Quit ..Out({"raw": (raw), "ndc11": (ndc), "lot": (lot), "expiry": (exp), "note": "Sample generated by RecallReach for the demo; not a real package serial."})
+    Quit ..Out({"raw": (raw), "ndc11": (ndc), "lot": (lot), "expiry": (exp), "recall_number": (meta."demo_recall"), "dispense_id": (s."dispense_id"), "subject_id": (s."subject_id"),
+        "note": "Sample generated by RecallReach for the demo; not a real package serial."})
 }
 
 ClassMethod Dispenses() As %Status
@@ -286,13 +310,13 @@ ClassMethod Audit() As %Status
     Set rn = $G(%request.Data("recall", 1))
     Set arr = []
     If rn '= "" {
-        Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT TOP 300 ID, TS, Actor, Event, RecallNumber, Detail, SessionId FROM RecallReach_Data.Audit WHERE RecallNumber = ? ORDER BY ID DESC", rn)
+        Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT TOP 300 ID, TS, Actor, Event, RecallNumber, Detail, SessionId, Summary FROM RecallReach_Data.Audit WHERE RecallNumber = ? ORDER BY ID DESC", rn)
     } Else {
-        Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT TOP 300 ID, TS, Actor, Event, RecallNumber, Detail, SessionId FROM RecallReach_Data.Audit ORDER BY ID DESC")
+        Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT TOP 300 ID, TS, Actor, Event, RecallNumber, Detail, SessionId, Summary FROM RecallReach_Data.Audit ORDER BY ID DESC")
     }
     While rs.%Next() {
         Do arr.%Push({"id": (rs.%Get("ID")), "ts": (rs.%Get("TS")), "actor": (rs.%Get("Actor")), "event": (rs.%Get("Event")),
-            "recall_number": (rs.%Get("RecallNumber")), "detail": (rs.%Get("Detail")), "session_id": (rs.%Get("SessionId"))})
+            "recall_number": (rs.%Get("RecallNumber")), "detail": (rs.%Get("Detail")), "session_id": (rs.%Get("SessionId")), "summary": (rs.%Get("Summary"))})
     }
     Quit ..Out({"events": (arr), "trace_url": "/csp/user/EnsPortal.VisualTrace.zen?SESSIONID="})
 }

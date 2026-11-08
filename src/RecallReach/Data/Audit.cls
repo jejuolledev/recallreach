@@ -16,14 +16,17 @@ Property Detail As %String(MAXLEN = 4000);
 
 Property SessionId As %Integer;
 
+/// one plain sentence for people; Detail keeps the raw data
+Property Summary As %String(MAXLEN = 1000);
+
 Index TSIdx On TS;
 
 Index RecallIdx On RecallNumber;
 
-ClassMethod Log(actor As %String, event As %String, recall As %String = "", detail As %String = "", session As %Integer = "") As %Status
+ClassMethod Log(actor As %String, event As %String, recall As %String = "", detail As %String = "", session As %Integer = "", summary As %String = "") As %Status
 {
     Set a = ..%New()
-    Set a.Actor = actor, a.Event = event, a.RecallNumber = recall, a.Detail = $E(detail, 1, 4000), a.SessionId = session
+    Set a.Actor = actor, a.Event = event, a.RecallNumber = recall, a.Detail = $E(detail, 1, 4000), a.SessionId = session, a.Summary = $E(summary, 1, 1000)
     Quit a.%Save()
 }
 

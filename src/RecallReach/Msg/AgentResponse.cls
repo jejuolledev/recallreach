@@ -24,10 +24,15 @@ Property CostUSD As %Double;
 
 Property LatencyMs As %Integer;
 
+/// Recall depth: consumer, retail, wholesale (decides the branch together with Action)
+Property Depth As %String;
+
+Property DepthStated As %Boolean;
+
 /// The agent's decision: hold_and_contact, stock_check, no_action
 Property Action As %String;
 
-Property Rationale As %String(MAXLEN = 400);
+Property Rationale As %String(MAXLEN = 600);
 
 Property LowConfidenceFields As %Integer;
 

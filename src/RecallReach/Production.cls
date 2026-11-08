@@ -1,7 +1,8 @@
 /// RecallReach interoperability production.
 ///   RecallFeed (custom inbound adapter) -> RecallTriage (BPL)
 ///       -> RecallReaderAgent (IRIS AI Hub agent: reads + decides)
-///       -> PatientMatcher (SQL + Vector Search + Embedded Python)
+///       -> consumer level: PatientMatcher (SQL + Vector Search + Embedded Python)
+///       -> retail / wholesale level: ShelfCheck (pull the lots, no patient calls)
 ///   ApprovalIntake -> ApprovalFlow (BPL) -> Pharmacist (Workflow Engine, 10 min) -> ActionExecutor
 Class RecallReach.Production Extends Ens.Production
 {
@@ -25,6 +26,7 @@ XData ProductionDefinition
     <Setting Target="Adapter" Name="AuditPolicy">RecallReach.AI.ToolAudit</Setting>
   </Item>
   <Item Name="PatientMatcher" Category="RecallReach" ClassName="RecallReach.Operation.PatientMatcher" PoolSize="1" Enabled="true" />
+  <Item Name="ShelfCheck" Category="RecallReach" ClassName="RecallReach.Operation.ShelfCheck" PoolSize="1" Enabled="true" />
   <Item Name="ActionExecutor" Category="RecallReach" ClassName="RecallReach.Operation.ActionExecutor" PoolSize="1" Enabled="true" />
   <Item Name="Pharmacist" Category="RecallReach" ClassName="EnsLib.Workflow.Operation" PoolSize="1" Enabled="true">
     <Setting Target="Host" Name="AutoCreateRole">1</Setting>

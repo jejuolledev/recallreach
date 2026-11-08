@@ -43,7 +43,7 @@ Method MakeRecall()
 {
     Do ..Clean()
     Set r = ##class(RecallReach.Data.Recall).%New()
-    Set r.RecallNumber = ..#RN, r.Classification = "Class II", r.Status = "ready", r.ProductDescription = "Test tablets"
+    Set r.RecallNumber = ..#RN, r.Classification = "Class II", r.Status = "ready", r.ProductDescription = "Test tablets", r.Action = "hold_and_contact", r.Depth = "consumer"
     Do r.SourceJSON.Write({"recall_number": (..#RN)}.%ToJSON())
     Do r.ExtractionJSON.Write({"ndcs": ["00000000001"]}.%ToJSON())
     Do r.ResultJSON.Write({"shown": [{"subject_id": "P1", "p": 0.9, "exact": 0, "best": {"dispense_id": -1}}], "hidden": [{"subject_id": "P2", "p": 0.01, "exact": 0, "best": {"dispense_id": -2}}]}.%ToJSON())
@@ -141,6 +141,24 @@ Method TestUnknownToken()
     Do $$$AssertEquals(##class(RecallReach.Core.Approvals).Decide("nope", "approve").code, 404)
 }
 
+Method TestShelfCheckRecallTakesNoPatientPlan()
+{
+    Do ..MakeRecall()
+    Set r = ##class(RecallReach.Data.Recall).RecallIdxOpen(..#RN)
+    Set r.Action = "stock_check", r.Depth = "retail" Do r.%Save()
+    Do $$$AssertStatusOK(##class(RecallReach.Core.Approvals).Create(..#RN, {"hold": ["P1"], "contact": ["P1"]}, .token, .id, .err))
+    Do $$$AssertTrue(err [ "shelf check", "a retail-level recall gets no patient calls or holds")
+    Do $$$AssertEquals(token, "")
+}
+
+Method TestDuplicatePatientsCountOnce()
+{
+    Do ..MakeRecall()
+    Do $$$AssertStatusOK(##class(RecallReach.Core.Approvals).Create(..#RN, {"hold": ["P1", "P1"], "contact": ["P1"]}, .token, .id, .err))
+    Set a = ##class(RecallReach.Data.Approval).%OpenId(id)
+    Do $$$AssertEquals({}.%FromJSON(a.ActionsJSON).hold.%Size(), 1)
+}
+
 Method TestAuditAppendOnly()
 {
     Do ##class(RecallReach.Data.Audit).Log("unit test", "test.event", ..#RN, "x")
@@ -157,6 +175,10 @@ Method TestReplayAndValidation()
     Set v = {}.%FromJSON(##class(RecallReach.Core.Py).Validate(src, reply))
     Do $$$AssertEquals(v.ndcs.%Get(0), "68084006001")
     Do $$$AssertEquals(v.action, "hold_and_contact")
+    Do $$$AssertEquals(v.depth.value, "consumer")
+    Set src2 = {"recall_number": "X-2", "classification": "Class II", "reason_for_recall": "CGMP Deviations: Firm did not adequately investigate customer complaints.", "product_description": "Lisinopril tablets, USP 5mg (NDC 68084-060-01)", "code_info": "Lot#: 131928, Exp 09/30/2015", "distribution_pattern": "Nationwide"}.%ToJSON()
+    Set v2 = {}.%FromJSON(##class(RecallReach.Core.Py).Validate(src2, ##class(RecallReach.Core.Py).ReferenceReply(src2)))
+    Do $$$AssertEquals(v2.action, "stock_check", "quality-only Class II recall: shelf check, no patient calls")
     Set bad = {}.%FromJSON(##class(RecallReach.Core.Py).Validate(src, "I cannot help with that"))
     Do $$$AssertTrue(bad.error [ "not valid JSON", "non-JSON agent reply is an error, not a silent pass")
 }

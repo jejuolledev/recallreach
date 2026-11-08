@@ -108,7 +108,8 @@ ClassMethod Reset() As %Status
     }
     Set it = meta.history.%GetIterator()
     While it.%GetNext(.i, .rn) {
-        &sql(UPDATE RecallReach_Data.Recall SET Status = 'ready' WHERE RecallNumber = :rn AND Status <> 'pool' AND Status <> 'no_patients')
+        &sql(UPDATE RecallReach_Data.Recall SET Status = 'ready' WHERE RecallNumber = :rn AND Status <> 'pool' AND Status <> 'no_patients' AND Action = 'hold_and_contact')
+        &sql(UPDATE RecallReach_Data.Recall SET Status = 'shelf_check', ShelfDoneAt = NULL WHERE RecallNumber = :rn AND Status <> 'pool' AND Action = 'stock_check')
     }
     Kill ^RecallReach("Inbox")
     Set ^RecallReach("QueuePos") = 0

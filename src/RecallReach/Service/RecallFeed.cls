@@ -16,7 +16,8 @@ Method OnProcessInput(pInput As Ens.StringContainer, Output pOutput As %Register
     Set sc = ..SendRequestAsync("RecallTriage", msg)
     Set rec.SessionId = ..%SessionId
     Do rec.%Save()
-    Do ##class(RecallReach.Data.Audit).Log("FDA feed", "recall.arrived", pInput, rec.Classification_" - "_$E(rec.ProductDescription, 1, 120), ..%SessionId)
+    Do ##class(RecallReach.Data.Audit).Log("FDA feed", "recall.arrived", pInput, rec.Classification_" - "_$E(rec.ProductDescription, 1, 120), ..%SessionId,
+        "Recall arrived: "_rec.Classification_", "_$P($P(rec.ProductDescription, ",", 1), ";", 1)_" (FDA report "_$E(rec.ReportDate,1,4)_"-"_$E(rec.ReportDate,5,6)_"-"_$E(rec.ReportDate,7,8)_")")
     Quit sc
 }
 

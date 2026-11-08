@@ -23,6 +23,7 @@ ClassMethod Create(recallNumber As %String, plan As %DynamicObject, Output token
     Set rec = ##class(RecallReach.Data.Recall).RecallIdxOpen(recallNumber)
     If '$ISOBJECT(rec) Set err = "unknown recall" Quit $$$OK
     If (rec.Status '= "ready") && (rec.Status '= "rejected") && (rec.Status '= "expired") && (rec.Status '= "stopped") Set err = "recall is "_rec.Status Quit $$$OK
+    If rec.Action '= "hold_and_contact" Set err = "This recall is a shelf check ("_rec.Depth_" level): no patient plan is needed." Quit $$$OK
     Set result = {}.%FromJSON(##class(RecallReach.Core.Config).ReadStream(rec.ResultJSON))
     For list = result.shown, result.hidden {
         Set it = list.%GetIterator()
@@ -33,8 +34,11 @@ ClassMethod Create(recallNumber As %String, plan As %DynamicObject, Output token
         Set arr = plan.%Get(key)
         Continue:'$ISOBJECT(arr)
         Set it = arr.%GetIterator()
+        Kill seen
         While it.%GetNext(.i, .sid) {
             If '$D(ok(sid)) Set err = "patient "_sid_" is not on this recall's list" Return $$$OK
+            Continue:$D(seen(sid))
+            Set seen(sid) = 1
             Do clean.%Get(key).%Push(sid)
         }
     }
@@ -52,8 +56,7 @@ ClassMethod Create(recallNumber As %String, plan As %DynamicObject, Output token
     $$$QuitOnError(a.%Save())
     Set rec.Status = "awaiting_approval"
     Do rec.%Save()
-    Do ##class(RecallReach.Data.Audit).Log("pharmacist", "approval.requested", recallNumber,
-        "hold "_clean.hold.%Size()_", contact "_clean.contact.%Size()_"; expires "_a.ExpiresAt_" UTC; single use")
+    // the audit row is written by Dispatch, once the Interoperability session exists
     Quit $$$OK
 }
 
@@ -64,9 +67,24 @@ ClassMethod Dispatch(approvalId As %Integer) As %Status
     Set req = ##class(RecallReach.Msg.ApprovalRequest).%New()
     Set req.ApprovalId = approvalId, req.RecallNumber = a.RecallNumber
     Set p = {}.%FromJSON(a.ActionsJSON)
-    Set req.Summary = "Hold next fill: "_p.hold.%Size()_" patients. Contact: "_p.contact.%Size()_" patients."
+    Set req.Summary = "Fill next refill from a non-recalled lot: "_p.hold.%Size()_" patients. Call: "_p.contact.%Size()_" patients."
     $$$QuitOnError(##class(Ens.Director).CreateBusinessService("ApprovalIntake", .svc))
-    Quit svc.ProcessInput(req)
+    Set sc = svc.ProcessInput(req)
+    Set a = ##class(RecallReach.Data.Approval).%OpenId(approvalId)
+    Do ##class(RecallReach.Data.Audit).Log("pharmacist", "approval.requested", a.RecallNumber,
+        "hold "_p.hold.%Size()_", contact "_p.contact.%Size()_"; expires "_a.ExpiresAt_" UTC; single use", a.SessionId,
+        "Approval requested: "_..Plan(p)_". Expires "_$E(a.ExpiresAt, 12, 16)_" UTC, works once")
+    Quit sc
+}
+
+/// "2 next fills from a non-recalled lot, call 2 patients (10002428, 10015860)"
+ClassMethod Plan(p As %DynamicObject) As %String
+{
+    Set h = p.hold.%Size(), c = p.contact.%Size(), ids = ""
+    Set it = p.contact.%GetIterator()
+    While it.%GetNext(.i, .sid) { Set:i<4 ids = ids_$S(ids="":"", 1:", ")_sid }
+    If c > 4 Set ids = ids_", ..."
+    Quit h_" next fill"_$S(h=1:"", 1:"s")_" from a non-recalled lot, call "_c_" patient"_$S(c=1:"", 1:"s")_$S(ids'="":" ("_ids_")", 1:"")
 }
 
 /// decision = "approve" | "reject". Returns {"ok":1} or {"ok":0,"code":http,"error":...}
@@ -102,7 +120,8 @@ ClassMethod Decide(token As %String, decision As %String, reason As %String = ""
     }
     Lock -^RecallReach("Approval", id)
     If out.ok {
-        Do ##class(RecallReach.Data.Audit).Log(actor, "approval."_a.Status, a.RecallNumber, $S(decision="reject":"reason: "_reason, 1:a.ActionsJSON), a.SessionId)
+        Do ##class(RecallReach.Data.Audit).Log(actor, "approval."_a.Status, a.RecallNumber, $S(decision="reject":"reason: "_reason, 1:a.ActionsJSON), a.SessionId,
+            $S(decision="reject":"Rejected by the pharmacist. Reason: "_reason, 1:"Approved by the pharmacist: "_..Plan({}.%FromJSON(a.ActionsJSON))))
         Set sc = ..CompleteTask(a, $S(decision="approve":"Approve", 1:"Reject"))
         If $$$ISERR(sc) Set out.warning = $SYSTEM.Status.GetErrorText(sc)
         If decision = "reject" {
@@ -118,7 +137,7 @@ ClassMethod ExpireIfDue(a As RecallReach.Data.Approval)
     If (a.Status = "pending") && (##class(RecallReach.Core.Config).Diff(a.ExpiresAt, ##class(RecallReach.Core.Config).Now()) >= 0) {
         Set a.Status = "expired"
         Do a.%Save()
-        Do ##class(RecallReach.Data.Audit).Log("timer", "approval.expired", a.RecallNumber, "not decided within 10 minutes", a.SessionId)
+        Do ##class(RecallReach.Data.Audit).Log("timer", "approval.expired", a.RecallNumber, "not decided within 10 minutes", a.SessionId, "Approval expired: nobody decided within 10 minutes, nothing was done")
         Set rec = ##class(RecallReach.Data.Recall).RecallIdxOpen(a.RecallNumber)
         If $ISOBJECT(rec) && (rec.Status = "awaiting_approval") Set rec.Status = "expired" Do rec.%Save()
     }
@@ -143,7 +162,7 @@ ClassMethod Cancel(approvalId As %Integer, why As %String) As %Status
     Quit:a.Status'="pending" $$$OK
     Set a.Status = "cancelled", a.RejectReason = why
     Do a.%Save()
-    Do ##class(RecallReach.Data.Audit).Log("system", "approval.cancelled", a.RecallNumber, why, a.SessionId)
+    Do ##class(RecallReach.Data.Audit).Log("system", "approval.cancelled", a.RecallNumber, why, a.SessionId, "Approval cancelled ("_why_"): nothing was done")
     Set rec = ##class(RecallReach.Data.Recall).RecallIdxOpen(a.RecallNumber)
     If $ISOBJECT(rec) && (rec.Status = "awaiting_approval") Set rec.Status = "stopped" Do rec.%Save()
     Quit ..CompleteTask(a, "")

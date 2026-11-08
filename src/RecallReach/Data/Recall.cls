@@ -16,7 +16,7 @@ Property ReportDate As %String;
 
 Property InitiationDate As %String;
 
-/// new, reading, matching, ready, awaiting_approval, approved, rejected, expired, no_patients, stopped, error
+/// new, reading, ready, awaiting_approval, approved, rejected, expired, no_patients, shelf_check, shelf_done, stopped, error
 Property Status As %String [ InitialExpression = "new" ];
 
 Property ArrivedAt As %TimeStamp;
@@ -35,9 +35,21 @@ Property Model As %String;
 
 Property Action As %String;
 
-Property Rationale As %String(MAXLEN = 400);
+Property Rationale As %String(MAXLEN = 600);
 
 Property LowConfidence As %Integer;
+
+/// recall depth: consumer, retail or wholesale (openFDA has no depth field: stated in the notice text, or inferred by the documented rule)
+Property Depth As %String;
+
+Property DepthStated As %Boolean;
+
+Property DepthBasis As %String(MAXLEN = 400);
+
+/// shelf-check task (stock_check branch): lots and NDCs to pull, as JSON
+Property ShelfTaskJSON As %String(MAXLEN = "");
+
+Property ShelfDoneAt As %TimeStamp;
 
 Property PatientsShown As %Integer;
 

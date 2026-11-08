@@ -26,7 +26,7 @@ Method Read(req As RecallReach.Msg.AgentRequest, Output resp As RecallReach.Msg.
     Set rec = ##class(RecallReach.Data.Recall).RecallIdxOpen(req.RecallNumber)
     If '$ISOBJECT(rec) Quit $$$ERROR($$$GeneralError, "unknown recall")
     Set srcJson = $classmethod(cfg, "ReadStream", rec.SourceJSON)
-    Set ^||RecallReach("Recall") = req.RecallNumber
+    Set ^||RecallReach("Recall") = req.RecallNumber, ^||RecallReach("Session") = ..%SessionId
     Set t0 = $ZH
     Set sc = ..Adapter.SendChat(req.UserPrompt, .llm)
     Set ms = ($ZH - t0) * 1000 \ 1
@@ -61,14 +61,19 @@ Method Read(req As RecallReach.Msg.AgentRequest, Output resp As RecallReach.Msg.
         Quit $$$ERROR($$$GeneralError, v.error)
     }
     Set resp.Action = v.action, resp.Rationale = v.rationale, resp.LowConfidenceFields = v."low_confidence", resp.EvidenceNotFound = v."evidence_not_found"
+    Set resp.Depth = v.depth.value, resp.DepthStated = ''v.depth.stated
     // store on the recall only when it is being triaged (benchmark runs leave the inbox alone)
     If req.%Extends("RecallReach.Msg.AgentRequest") && (rec.Status '= "pool") {
         Do rec.ExtractionJSON.Clear()
         Do rec.ExtractionJSON.Write(vjson)
         Set rec.ExtractorSource = source, rec.Model = resp.Model, rec.Action = v.action, rec.Rationale = v.rationale, rec.LowConfidence = v."low_confidence"
+        Set rec.Depth = v.depth.value, rec.DepthStated = ''v.depth.stated, rec.DepthBasis = $E(v.depth.basis, 1, 400)
         Do rec.%Save()
+        Set what = $CASE(v.action, "hold_and_contact":"contact patients", "stock_check":"shelf check only, no patient calls", :"no action (never dispensed here)")
+        Set by = $S(mode="live":"model "_resp.Model, source="replay-recorded":"recorded model reply (replay)", 1:"rule-based replay, no LLM call")
         Do ##class(RecallReach.Data.Audit).Log("AI Hub agent", "agent.decided", req.RecallNumber,
-            "action="_v.action_"; "_v.rationale_" (source: "_source_", "_v."low_confidence"_" low-confidence fields, "_inTok_"+"_outTok_" tokens, $"_$FN(cost,"",5)_")", ..%SessionId)
+            "action="_v.action_"; depth="_v.depth.value_$S(v.depth.stated:" (stated)", 1:" (inferred)")_"; "_v.rationale_" (source: "_source_", "_v."low_confidence"_" low-confidence fields, "_inTok_"+"_outTok_" tokens, $"_$FN(cost,"",5)_")", ..%SessionId,
+            "Agent decided: "_what_". "_v.rationale_" ["_by_"]")
     }
     Quit $$$OK
 }

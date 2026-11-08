@@ -1,4 +1,5 @@
-/// Recall arrives -> AI Hub agent reads it and decides -> patients ranked.
+/// Recall arrives -> AI Hub agent reads it and decides -> three ways:
+///   no_action (never dispensed) / stock_check (retail or wholesale level: shelf task) / hold_and_contact (consumer level: rank patients)
 Class RecallReach.Process.RecallTriage Extends Ens.BusinessProcessBPL
 {
 
@@ -7,6 +8,7 @@ XData BPL [ XMLNamespace = "http://www.intersystems.com/bpl" ]
 <process language='objectscript' request='RecallReach.Msg.RecallArrived' response='Ens.Response' height='1200' width='1000' >
 <context>
 <property name='Action' type='%String' instantiate='0' />
+<property name='Depth' type='%String' instantiate='0' />
 <property name='Shown' type='%Integer' instantiate='0' />
 <property name='Hidden' type='%Integer' instantiate='0' />
 </context>
@@ -24,15 +26,29 @@ XData BPL [ XMLNamespace = "http://www.intersystems.com/bpl" ]
 </request>
 <response type='RecallReach.Msg.AgentResponse' >
 <assign property="context.Action" value="callresponse.Action" action="set" />
+<assign property="context.Depth" value="callresponse.Depth" action="set" />
 </response>
 </call>
-<if name='Agent says no action?' condition='context.Action="no_action"' xpos='200' ypos='450' xend='200' yend='800' >
-<true>
+<switch name='Which way? (agent decision)' xpos='200' ypos='450' xend='200' yend='800' >
+<case name='No action: never dispensed' condition='context.Action="no_action"' >
 <code name='Close: no action' xpos='335' ypos='600' >
 <![CDATA[ do ##class(RecallReach.Core.Flow).SetStatus(request.RecallNumber, "no_patients", process.%SessionId)]]>
 </code>
-</true>
-<false>
+</case>
+<case name='Shelf check: retail or wholesale level' condition='context.Action="stock_check"' >
+<call name='Create shelf-check task' target='ShelfCheck' async='0' xpos='200' ypos='600' >
+<annotation>The recall does not reach patients: pull the lots from the shelf. No patient list, no calls, no change to next fills.</annotation>
+<request type='RecallReach.Msg.ShelfCheckRequest' >
+<assign property="callrequest.RecallNumber" value="request.RecallNumber" action="set" />
+<assign property="callrequest.Depth" value="context.Depth" action="set" />
+</request>
+<response type='RecallReach.Msg.ShelfCheckResponse' />
+</call>
+<code name='Shelf check open' xpos='200' ypos='700' >
+<![CDATA[ do ##class(RecallReach.Core.Flow).SetStatus(request.RecallNumber, "shelf_check", process.%SessionId)]]>
+</code>
+</case>
+<default name='Patient contact: consumer level' >
 <call name='Rank patients' target='PatientMatcher' async='0' xpos='65' ypos='600' >
 <request type='RecallReach.Msg.MatchRequest' >
 <assign property="callrequest.RecallNumber" value="request.RecallNumber" action="set" />
@@ -45,8 +61,8 @@ XData BPL [ XMLNamespace = "http://www.intersystems.com/bpl" ]
 <code name='Ready for pharmacist' xpos='65' ypos='700' >
 <![CDATA[ do ##class(RecallReach.Core.Flow).SetStatus(request.RecallNumber, $S((context.Shown+context.Hidden)>0:"ready", 1:"no_patients"), process.%SessionId)]]>
 </code>
-</false>
-</if>
+</default>
+</switch>
 <faulthandlers>
 <catchall name='Any error' xpos='200' ypos='900' >
 <code name='Record error' >

@@ -58,7 +58,7 @@ ClassMethod IsKilled() As %Boolean
 ClassMethod SetKill(on As %Boolean, actor As %String = "pharmacist", reason As %String = "") As %Status
 {
     Set ^RecallReach("KillSwitch") = ''on
-    Do ##class(RecallReach.Data.Audit).Log(actor, $S(on:"killswitch.on", 1:"killswitch.off"), "", reason)
+    Do ##class(RecallReach.Data.Audit).Log(actor, $S(on:"killswitch.on", 1:"killswitch.off"), "", reason, "", $S(on:"Kill switch turned on: agent, feed, approvals and actions stopped", 1:"Kill switch turned off"))
     If on {
         Set rs = ##class(%SQL.Statement).%ExecDirect(, "SELECT ID FROM RecallReach_Data.Approval WHERE Status = 'pending'")
         While rs.%Next() {
