@@ -22,7 +22,7 @@ ClassMethod Create(recallNumber As %String, plan As %DynamicObject, Output token
     If ##class(RecallReach.Core.Config).IsKilled() Set err = "Kill switch is ON" Quit $$$OK
     Set rec = ##class(RecallReach.Data.Recall).RecallIdxOpen(recallNumber)
     If '$ISOBJECT(rec) Set err = "unknown recall" Quit $$$OK
-    If (rec.Status '= "ready") && (rec.Status '= "rejected") && (rec.Status '= "expired") Set err = "recall is "_rec.Status Quit $$$OK
+    If (rec.Status '= "ready") && (rec.Status '= "rejected") && (rec.Status '= "expired") && (rec.Status '= "stopped") Set err = "recall is "_rec.Status Quit $$$OK
     Set result = {}.%FromJSON(##class(RecallReach.Core.Config).ReadStream(rec.ResultJSON))
     For list = result.shown, result.hidden {
         Set it = list.%GetIterator()

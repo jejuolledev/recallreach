@@ -6,16 +6,21 @@
 
 - Real data: 100 real de-identified patients and 18,087 dispensing records from MIMIC-IV Demo, 647 real openFDA recalls, CMS Medicaid volumes.
 - Runs with **no API key** (replay mode) on the first `docker compose up`. Set one env var for the live Anthropic model.
-- Built on **IRIS for Health Community 2027.1.0AI build 109** (`2027.1.0AI.109.0`, arm64). Build 154 was taken off the portal; organizers said 109 is fine if the README says so.
+- Built and tested on **IRIS for Health Community 2027.1.0AI build 109** (`2027.1.0AI.109.0`, arm64 on Apple Silicon; the amd64 image of the same build should work the same way, not tested here). Build 154 was taken off the portal; organizers said 109 is fine if the README says so.
 
 ## Quick start (3 commands)
 
 The AI Hub image is on the InterSystems early-access portal, not on Docker Hub. Load it once:
 
 ```bash
-docker image load -i irishealth_arm64-community-2027.1.0AI.109.0-docker.tar.gz   # or the amd64 file
-docker images | grep irishealth-community                                          # see the name it got
-docker tag <that name>:2027.1.0AI.109.0 intersystems/irishealth-community:2027.1.0AI.109.0
+# Apple Silicon / ARM64 file:
+docker image load -i irishealth_arm64-community-2027.1.0AI.109.0-docker.tar.gz
+# Intel / AMD64 file:
+# docker image load -i irishealth-community-2027.1.0AI.109.0-docker.tar.gz
+docker images | grep irishealth                     # see the name it loaded as, e.g.
+# docker.iscinternal.com/docker-intersystems/intersystems/irishealth-community:2027.1.0AI.109.0
+docker tag <that full name> intersystems/irishealth-community:2027.1.0AI.109.0
+# (or set IRIS_IMAGE=<that full name> in .env instead of tagging)
 ```
 
 Then:
@@ -23,21 +28,22 @@ Then:
 ```bash
 git clone <this repo> && cd recallreach
 docker compose up -d --build        # ~3 min the first time: compiles, loads data, runs 6 recalls through the production
+# the app answers a few seconds after the container starts
 open http://localhost:52795/recallreach/index.html
 ```
 
 No login for the app. Management Portal: http://localhost:52795/csp/sys/UtilHome.csp (`_SYSTEM` / `SYS`), production `RecallReach.Production` in namespace `USER`.
 
-Live LLM (optional): `cp .env.example .env`, put your key in `ANTHROPIC_API_KEY`, `docker compose up -d`. The header then shows "Live AI Hub agent · claude-haiku-5-5". Spend is capped by `RR_SPEND_CAP_USD` (default $5). The key is read from the container environment only; it is never logged, stored or sent to the browser.
+Live LLM (optional): `cp .env.example .env`, put your key in `ANTHROPIC_API_KEY`, `docker compose up -d`. The header then shows "Live AI Hub agent · claude-haiku-5-5". Spend is capped by `RR_SPEND_CAP_USD` (default $5). The key is read from the container environment only; the app never logs it, stores it or sends it to the browser. Ports are bound to 127.0.0.1. Before live mode on a shared machine, change the `_SYSTEM` password: anyone with Management Portal access can read the container environment.
 
 ## Try it (2 minutes)
 
 1. **Scan barcode** tab: *Use a sample barcode* -> *Read barcode* -> *Record lot here* on patient 10002428. (This plays the pharmacist who scanned the box when filling it.)
 2. **Recalls** tab: *Simulate new FDA recall*. A real FDA recall (D-1226-2015, Lisinopril 5 mg) arrives; the AI Hub agent reads it.
 3. Open it: the notice is on the left, the fields the agent extracted on the right. Click a field to see its evidence. Low-confidence fields are yellow.
-4. *Find patients*: the list spins and stops on the top patient. Press *Why 91%?* on any row for the formula and sources.
+4. *Find patients*: the list spins and stops on the top patient. Press *Why ...?* on any row for the formula and sources.
 5. *Ask pharmacist approval* -> *Approve*. Press it again: refused, the link is single use. Wait 10 minutes: expired.
-6. Turn on the **Kill switch**: the agent, the feed, approvals and actions all stop.
+6. Turn on the **Kill switch**: the agent, the feed, approvals and actions all stop, and pending approvals are cancelled. Turn it off and ask for a new approval.
 7. **Audit trail** and **Accuracy** tabs. Each audit row links to Visual Trace.
 
 ## How it works
@@ -78,13 +84,14 @@ Every LLM call is an `AgentRequest` / `AgentResponse` message pair: prompt, raw 
 
 ### Replay mode (no key)
 
-With no `ANTHROPIC_API_KEY`, the adapter creates the same AI Hub `anthropic` provider with `base_url` pointing to `/recallreach/replay/v1/` on this IRIS instance (local requests only). That endpoint speaks the Anthropic Messages API: it first asks for the `LookupDispensed` tool like the live model does, then answers with a recorded live reply for that recall if one exists in `data/recordings/`, or else with a deterministic rule-based reference reply. So `%AI.Agent.Chat`, tool execution, policies, sessions and token stats all run for real. The UI labels which source produced each answer.
+With no `ANTHROPIC_API_KEY`, the adapter creates the same AI Hub `anthropic` provider with `base_url` pointing to `/recallreach/replay/v1/` on this IRIS instance (local requests only). That endpoint speaks the Anthropic Messages API: it first asks for the `LookupDispensed` tool like the live model does, then answers with a recorded live reply for that recall if one exists in `data/recordings/` (none are shipped yet: no key at build time), or else with a deterministic rule-based reference reply. So `%AI.Agent.Chat`, tool execution, policies, sessions and token stats all run for real. The UI labels which source produced each answer.
 
 ### The probability (an estimate, shown with its sources)
 
 ```
 P(fill)    = product match x time on shelf x lot share x region
-P(patient) = 1 - product(1 - P(fill))  over that patient's fills
+P(patient) = average over MIMIC's date shift of [ 1 - product(1 - P(fill)) ]
+             (MIMIC shifts all dates of a patient by ONE unknown offset, so the fills move together)
 ```
 
 | Factor | Value | Source |
@@ -99,7 +106,7 @@ Rows under 5% are folded into "n low-likelihood hidden". Medicaid covers only pa
 
 ## Numbers you can check
 
-- Demo recall **D-1226-2015** (Class II, Lisinopril 5 mg unit-dose tablets, American Health Packaging / Wockhardt, lot 131928 exp 2015-09-30, 4,718 cartons, nationwide). 22 MIMIC patients had a lisinopril fill; 8 shown, 14 hidden; 7 got the exact recalled NDC 68084-0060-01. Top without a barcode: patient 10015860, 91%. With the lot scanned for patient 10002428: 100%, "Lot confirmed".
+- Demo recall **D-1226-2015** (Class II, Lisinopril 5 mg unit-dose tablets, American Health Packaging / Wockhardt, lot 131928 exp 2015-09-30, 4,718 cartons, nationwide). 22 MIMIC patients had a lisinopril fill; 7 shown, 15 hidden; the 7 shown are exactly the patients who got the recalled NDC 68084-0060-01. Top without a barcode: patient 10015860 (3 fills of that NDC), 78%. With the lot scanned for patient 10002428: 100%, "Lot confirmed".
 - 372 of 18,076 openFDA drug recalls share an NDC with the 100 MIMIC demo patients.
 - **Accuracy** (Accuracy tab, 300 random recalls that carry FDA's NDC list, fixed seed): the rule-based reference finds an FDA product NDC in **99.7%**, an exact package NDC in **99.7%**, extracts no NDC that FDA does not list in **300/300**, and its ingredient matches FDA's generic name in **81.7%** (brand names like "Kids' Cough and Chest Congestion" are its weak spot). Live LLM accuracy is not in this build because no key was available at build time: run `tools/run_benchmark.sh` with a key (estimated $0.001-0.002 per recall with claude-haiku-5-5, two model turns; about $0.5 for all 300) and the page shows it next to the rule-based numbers, wrong cases included.
 
@@ -129,7 +136,7 @@ Rows under 5% are folded into "n low-likelihood hidden". Medicaid covers only pa
 
 - Patients: MIMIC-IV Clinical Database Demo v2.2 (PhysioNet, ODbL v1.0), 100 real de-identified patients. No names; dates are shifted by MIMIC; ages over 89 are capped by MIMIC. Derived data in `data/` stays under ODbL (see LICENSE).
 - Recalls: openFDA drug enforcement (public domain). Volumes: CMS Medicaid State Drug Utilization Data.
-- The demo has no login and holds no real pharmacy data. Do not put real patient data in it.
+- The demo has no login and holds no real pharmacy data. Do not put real patient data in it. The web apps run unauthenticated with full rights so the demo works without an account; in the demo the person who asks for approval also holds the approval link. A real deployment would put the approve route behind a pharmacist login.
 - Not for clinical use. Probabilities are estimates.
 
 ## Limits, honestly

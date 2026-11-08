@@ -22,7 +22,7 @@ XData BPL [ XMLNamespace = "http://www.intersystems.com/bpl" ]
 </true>
 <false>
 <call name='Ask pharmacist' target='Pharmacist' async='1' xpos='65' ypos='600' >
-<annotation>IRIS Workflow task. Completed by the RecallReach approval screen (single-use token) or the Workflow inbox.</annotation>
+<annotation>IRIS Workflow task. Completed only through the RecallReach approval screen (single-use, 10-minute token).</annotation>
 <request type='EnsLib.Workflow.TaskRequest' >
 <assign property="callrequest.%Subject" value="context.Subject" action="set" />
 <assign property="callrequest.%Message" value="request.Summary" action="set" />

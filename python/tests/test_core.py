@@ -203,6 +203,25 @@ class TestProbability(unittest.TestCase):
             self.assertTrue(0.0 <= r["p"] <= 1.0)
 
 
+class TestSharedShift(unittest.TestCase):
+    def test_same_day_fills_do_not_compound(self):
+        v = extract.validate(LISINOPRIL, extract.reference_extract(LISINOPRIL))
+        d1 = {"id": 1, "subject_id": "A", "starttime": "2157-07-16 08:00:00", "drug": "Lisinopril", "ndc": "68084006001", "strength": "5mg", "lot": ""}
+        d2 = dict(d1, id=2)
+        one = probability.rank_patients(LISINOPRIL, v, [d1], {"A": PAT}, {"68084006001": {"2014Q1": 1.0}}, 0)["shown"][0]["p"]
+        two = probability.rank_patients(LISINOPRIL, v, [d1, d2], {"A": PAT}, {"68084006001": {"2014Q1": 1.0}}, 0)["shown"][0]["p"]
+        # one shared MIMIC date shift: a second fill on the same day cannot double the time chance
+        self.assertAlmostEqual(one, two, 2)
+
+    def test_cleared_lot_is_not_exact_when_other_fills_remain(self):
+        v = extract.validate(LISINOPRIL, extract.reference_extract(LISINOPRIL))
+        d1 = {"id": 1, "subject_id": "A", "starttime": "2157-07-16 08:00:00", "drug": "Lisinopril", "ndc": "68084006001", "strength": "5mg", "lot": "999"}
+        d2 = dict(d1, id=2, lot="", starttime="2157-03-01 08:00:00")
+        row = probability.rank_patients(LISINOPRIL, v, [d1, d2], {"A": PAT}, {}, 0)["shown"][0]
+        self.assertFalse(row["exact"])
+        self.assertGreater(row["p"], 0)
+
+
 class TestVectors(unittest.TestCase):
     def test_same_ingredient_scores_high(self):
         a = vectors.embed("Lisinopril tablets, USP")

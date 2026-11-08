@@ -249,11 +249,11 @@
     var formula = row.exact ? "Barcode lot on the dispensing record = exact answer"
       : "P(fill) = " + f.map(function (x) { return x.name.toLowerCase(); }).join(" x ") +
         "<br>P(fill) = " + f.map(function (x) { return (+x.value).toFixed(3); }).join(" x ") + " = " + (+(row.best.p || 0)).toFixed(3) +
-        (row.fills > 1 ? "<br>P(patient) = 1 - product(1 - P(fill)) over " + row.fills + " fills = " + (+row.p).toFixed(3) : "");
+        (row.fills > 1 ? "<br>P(patient) = 1 - product(1 - P(fill)) over " + row.fills + " fills, averaged over MIMIC's one shared date shift = " + (+row.p).toFixed(3) : "");
     return '<div class="formula">' + formula + "</div>" + f.map(function (x) {
       return '<div class="factor"><div><b>' + esc(x.name) + '</b><div class="src">' + esc(x.source) + '</div></div><div class="fv">' + (+x.value).toFixed(3) + "</div><div>" + esc(x.why) +
         (x.caveat ? '<div class="src">' + esc(x.caveat) + "</div>" : "") + "</div></div>";
-    }).join("") + '<p class="muted small" style="margin:8px 0 0">Estimate, not a diagnosis. Scan the lot barcode at dispensing to make this exact.</p>';
+    }).join("") + (row.exact ? "" : '<p class="muted small" style="margin:8px 0 0">Estimate, not a diagnosis. Scan the lot barcode at dispensing to make this exact.</p>');
   }
   function viewPatients(rn, spin) {
     setTab("inbox");
@@ -391,7 +391,8 @@
       if (a.status !== "pending") { clearInterval(timer); lock(); showResult(a); }
       function decide(kind) {
         var body = kind === "reject" ? { reason: document.getElementById("why").value } : {};
-        api("/approvals/" + encodeURIComponent(token) + "/" + kind, { method: "POST", body: body }).then(function () {
+        api("/approvals/" + encodeURIComponent(token) + "/" + kind, { method: "POST", body: body }).then(function (j) {
+          if (j && j.warning) toast("Recorded, but the Workflow task was not found: " + j.warning);
           clearInterval(timer); lock();
           document.getElementById("left").textContent = kind === "approve" ? "Used" : "Closed";
           setTimeout(function () { api("/approvals/" + encodeURIComponent(token)).then(showResult); }, 1200);

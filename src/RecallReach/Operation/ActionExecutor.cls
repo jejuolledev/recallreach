@@ -47,7 +47,7 @@ Method Execute(req As RecallReach.Msg.ActionRequest, Output resp As RecallReach.
         Continue:'$D(cand(sid))
         Set c = ##class(RecallReach.Data.Contact).%New()
         Set c.RecallNumber = appr.RecallNumber, c.SubjectId = sid, c.P = cand(sid).p, c.ApprovalId = appr.%Id(), c.CreatedAt = ##class(RecallReach.Core.Config).Now()
-        Set c.Reason = $S(cand(sid).exact: "Lot confirmed by barcode", 1: "Estimated "_$FN(cand(sid).p*100,"",0)_"% chance of a recalled unit")
+        Set c.Reason = $S(cand(sid).p>=1: "Lot confirmed by barcode", 1: "Estimated "_$FN(cand(sid).p*100,"",0)_"% chance of a recalled unit")
         Do c.%Save()
         Set contacts = contacts + 1
     }

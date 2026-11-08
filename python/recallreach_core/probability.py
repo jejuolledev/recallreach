@@ -263,6 +263,46 @@ def score_dispense(recall, extraction, dispense, patient, sdud, win=None):
     return res
 
 
+def patient_probability(items, win, step_days=7):
+    """P(at least one of the patient's fills came from the recalled lot).
+
+    MIMIC shifts all dates of one patient by the SAME unknown offset, so the
+    fills are not independent in time: we average over that shared offset
+    instead of multiplying per-fill time factors.
+    items: [(score_dispense result, dispense)]"""
+    if any(s["exact"] and s["p"] >= 1.0 for s, _ in items):
+        return 1.0
+    live = [(s, d) for s, d in items if not s["exact"]]       # scanned lots that are NOT on the recall drop out
+    if not live:
+        return 0.0
+    a, b = win[0], win[1]
+    fills = []
+    for s, _ in live:
+        other = 1.0
+        for f in s.get("factors", []):
+            if f["name"] != "Time on shelf":
+                other *= float(f["value"])
+        lo = _date(s["window"][0]) if s.get("window") else None
+        hi = _date(s["window"][1]) if s.get("window") else None
+        fills.append((other, lo, hi))
+    if not (a and b) or any(lo is None for _, lo, _ in fills):
+        q = 1.0
+        for s, _ in live:
+            q *= (1 - s["p"])
+        return 1 - q
+    span = max(1, min((hi - lo).days for _, lo, hi in fills))
+    ks = range(0, span, step_days)
+    total = 0.0
+    for k in ks:
+        q = 1.0
+        for other, lo, _ in fills:
+            d = lo + dt.timedelta(days=k)
+            if a <= d <= b:
+                q *= (1 - other)
+        total += 1 - q
+    return total / len(ks)
+
+
 def rank_patients(recall, extraction, dispenses, patients, sdud=None, threshold=DEFAULT_THRESHOLD):
     """dispenses: candidate dispense dicts (already filtered by NDC/ingredient).
     patients: {subject_id: {...anchor fields...}}.  Returns ranked patient rows."""
@@ -276,15 +316,8 @@ def rank_patients(recall, extraction, dispenses, patients, sdud=None, threshold=
         per.setdefault(d["subject_id"], []).append((s, d))
     rows = []
     for sid, items in per.items():
-        exact = [s for s, _ in items if s["exact"]]
-        if exact and any(s["p"] == 1.0 for s in exact):
-            p = 1.0
-        else:
-            q = 1.0
-            for s, _ in items:
-                if not (s["exact"] and s["p"] == 0.0):
-                    q *= (1 - s["p"])
-            p = 1 - q
+        p = patient_probability(items, win)
+        exact = all(s["exact"] for s, _ in items) or p >= 1.0
         best_s, best_d = max(items, key=lambda x: (x[0]["p"], x[1].get("starttime") or ""))
         badges = []
         for s, _ in items:
@@ -295,7 +328,7 @@ def rank_patients(recall, extraction, dispenses, patients, sdud=None, threshold=
             "subject_id": sid, "p": round(p, 6), "fills": len(items), "best": best_s,
             "drug": best_d.get("drug"), "strength": best_d.get("strength"), "ndc": best_d.get("ndc"),
             "last_fill_shifted": max((d.get("starttime") or "") for _, d in items),
-            "badges": badges, "exact": any(s["exact"] for s, _ in items),
+            "badges": badges, "exact": exact,
             "sex": patients[sid].get("gender"), "age": patients[sid].get("anchor_age"),
         })
     rows.sort(key=lambda r: (-r["p"], -r["fills"], r["subject_id"]))
