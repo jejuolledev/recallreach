@@ -162,6 +162,14 @@ class TestRecallDepth(unittest.TestCase):
         v = extract.validate(LISINOPRIL, data)
         self.assertEqual(v["action"], "stock_check")
 
+    def test_validator_fills_month_only_expiry(self):
+        data = extract.reference_extract(LISINOPRIL)
+        data["lots"] = [{"value": "131928", "expiry": "", "evidence": "Lot#: 131928, Exp 09/30/2015"}]
+        v = extract.validate(LISINOPRIL, data)
+        self.assertEqual(v["lots"], [{"lot": "131928", "expiry": "2015-09-30"}])
+        self.assertTrue(any(f["note"].startswith("expiry filled") for f in v["fields"]))
+        self.assertEqual(extract.parse_expiry("2019-11"), "2019-11-30")
+
     def test_agent_stated_depth_needs_evidence(self):
         data = extract.reference_extract(dict(LISINOPRIL, classification="Class I"))
         data["depth"] = {"value": "retail", "stated": True, "evidence": "retail level"}   # not in the notice

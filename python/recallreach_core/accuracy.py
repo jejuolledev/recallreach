@@ -1,6 +1,7 @@
 """Accuracy panel: hide FDA's harmonized NDC list, let an extractor read the
 free text, compare.  Works for the rule-based extractor and for recorded LLM
 outputs alike."""
+import re
 from . import extract, ndc as ndcmod
 
 
@@ -36,7 +37,7 @@ def score_one(recall, validated):
     of = recall.get("openfda") or {}
     names = " ".join((of.get("generic_name") or []) + (of.get("substance_name") or [])).lower()
     ing = (validated.get("ingredient") or "").lower().strip()
-    ing_hit = bool(ing) and any(w in names for w in ing.split() if len(w) > 3)
+    ing_hit = bool(ing) and any(w in names for w in re.split(r"[^a-z0-9]+", ing) if len(w) > 3)
     return {
         "recall_number": recall["recall_number"],
         "fda_ndcs": sorted(truth), "extracted": sorted(got),

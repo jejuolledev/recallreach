@@ -59,7 +59,7 @@ JSON shape:
  "form":{"value":"tablet|capsule|injection|solution|suspension|inhalation|topical|patch|other","evidence":"","confidence":""},
  "manufacturer":{"value":"","evidence":"","confidence":""},
  "ndcs":[{"value":"","evidence":""}],
- "lots":[{"value":"","expiry":"YYYY-MM-DD or empty","evidence":""}],
+ "lots":[{"value":"","expiry":"YYYY-MM-DD, or YYYY-MM when the notice gives only a month, or empty","evidence":""}],
  "all_lots":false,
  "distribution":{"nationwide":true,"states":["MA"],"evidence":"","confidence":""},
  "depth":{"value":"consumer|retail|wholesale","stated":false,"evidence":""},
@@ -191,6 +191,11 @@ def parse_expiry(s):
     m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
     if m:
         return s
+    m = re.fullmatch(r"(\d{4})-(\d{2})", s)
+    if m and 1 <= int(m.group(2)) <= 12:
+        yy, mm = int(m.group(1)), int(m.group(2))
+        nxt = datetime.date(yy + mm // 12, mm % 12 + 1, 1)
+        return (nxt - datetime.timedelta(days=1)).isoformat()
     m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", s)
     if m:
         mm, dd, yy = int(m.group(1)), int(m.group(2)), int(m.group(3))
@@ -404,10 +409,25 @@ def validate(recall, data):
         add("ndc", "NDC", "", "", "low")
 
     lots = []
+    # expiry: the model often leaves month-only dates ("Exp. 11/2019") empty; the validator fills them from
+    # the notice (its own evidence first, then the rule-based lot/expiry pairing) and says so
+    ref_exp = None
     for item in data.get("lots") or []:
         raw = (item.get("value") or "").strip()
-        exp = (item.get("expiry") or "").strip()
+        exp = parse_expiry(item.get("expiry") or "") or (item.get("expiry") or "").strip()
+        filled = ""
+        if raw and not exp:
+            m = EXP.search(item.get("evidence") or "")
+            if m:
+                exp = parse_expiry(m.group(1))
+            if not exp:
+                if ref_exp is None:
+                    ref_exp = {l["value"].upper(): l["expiry"] for l in reference_extract(recall)["lots"] if l.get("expiry")}
+                exp = ref_exp.get(raw.upper(), "")
+            filled = "expiry filled by the validator from the notice" if exp else ""
         f = add("lot", "Lot", raw, (item.get("evidence") or raw).strip(), "high", {"expiry": exp})
+        if filled:
+            f["note"] = f["note"] or filled
         if raw and f["start"] >= 0:
             lots.append({"lot": raw, "expiry": exp})
     if not data.get("lots"):
