@@ -176,7 +176,7 @@
           : r.status === "error" || r.status === "stopped" ? '<div class="count"><div class="l">' + esc(r.error || r.status) + "</div></div>"
           : shelf ? '<div class="count"><div class="n sm">Shelf check</div><div class="l">' + esc((r.depth || "retail") + " level") + ' · no patient calls</div></div>'
           : r.action === "no_action" || r.status === "no_patients" ? '<div class="count"><div class="n sm">No action</div><div class="l">not dispensed here</div></div>'
-          : '<div class="count"><div class="n">' + (r.shown || 0) + '</div><div class="l">' + (r.shown === 1 ? "patient" : "patients") + " likely affected</div>" +
+          : '<div class="count"><div class="n">' + (r.shown || 0) + '</div><div class="l">' + (r.shown === 1 ? "patient" : "patients") + " at 5% or more</div>" +
             (r.hidden ? '<div class="h">' + r.hidden + " more under 5%</div>" : "") + "</div>";
         return '<a class="card rcard' + (fresh || (state.newest === r.recall_number && busy) ? " new" : "") + '" href="#/recall/' + encodeURIComponent(r.recall_number) + '">' +
           '<div><div class="meta">' + clsPill(r.classification) + statusPill(r.status) +
@@ -223,6 +223,7 @@
         '<div class="row wrap" style="margin-bottom:6px">' + clsPill(r.classification) + statusPill(r.status) + '<span class="muted small">FDA report ' + esc(fdaDate(r.report_date)) + " · initiated " + esc(fdaDate(r.initiation_date)) + "</span></div>" +
         "<h1>" + esc(shortName(r.product)) + "</h1>" +
         '<p class="sub">' + esc(r.reason) + "</p>" + branch +
+        (r.depth === "consumer" && r.action && r.action !== "hold_and_contact" ? '<div class="toolchange" style="margin:-8px 0 18px"><b>The tool result changed the decision.</b> Consumer-level recall, but the LookupDispensed tool found 0 fills of the recalled NDCs in this pharmacy, so nobody is called.</div>' : "") +
         (shelf && r.shelf_task ? shelfCard(r) : "") +
         '<div class="grid2">' +
         '<div class="card"><div class="row"><h2 style="margin:0">FDA notice</h2><span class="spacer"></span><a class="small" target="_blank" rel="noopener" href="' + esc(r.fda.url) + '">Source on openFDA</a></div>' +
@@ -305,7 +306,7 @@
       '<div class="p">' + pct(row.p, row.exact) + "<small>" + (row.exact ? "exact (scanned lot)" : "estimate") + "</small></div>";
     if (!opts.reel) {
       var dis = opts.locked ? " disabled" : "";
-      html += '<div class="acts"><label title="Do not stop the medicine: fill the next refill from a lot that is not recalled"><input type="checkbox" class="h" ' + (opts.checked ? "checked" : "") + dis + "> Next refill from a non-recalled lot</label>" +
+      html += '<div class="acts"><label title="Fill the next refill from a lot that is not recalled (the medicine is not stopped)"><input type="checkbox" class="h" ' + (opts.checked ? "checked" : "") + dis + "> Switch next refill</label>" +
         '<label><input type="checkbox" class="c" ' + (opts.checked ? "checked" : "") + dis + "> Call patient</label>" +
         '<button class="exp">Why ' + (row.exact ? "exact" : pct(row.p)) + "?</button></div>";
       html += '<div class="detail">' + factorHtml(row) + "</div>";
@@ -314,11 +315,11 @@
   }
   function factorHtml(row) {
     var f = (row.best && row.best.factors) || [];
-    var formula = row.exact ? "A lot scanned from the barcode at dispensing decides it: exact answer, no estimate"
+    var formula = row.exact ? '<span class="fnote">A lot scanned from the barcode at dispensing decides it: exact answer, no estimate.</span>'
       : "P(fill) = " + f.map(function (x) { return x.name.toLowerCase(); }).join(" x ") +
         "<br>P(fill) = " + f.map(function (x) { return (+x.value).toFixed(2); }).join(" x ") + " = " + (+(row.best.p || 0)).toFixed(2) +
         (row.fills > 1 ? "<br>P(patient) = 1 - product(1 - P(fill)) over " + row.fills + " fills, averaged over MIMIC's one shared date shift = " + (+row.p).toFixed(2) : "") +
-        "<br>Shown rounded as " + pct(row.p) + ". An estimate is capped at 99%: only a scanned lot is 100%.";
+        '<br><span class="fnote">Shown rounded as ' + pct(row.p) + ". An estimate is capped at 99%: only a scanned lot is 100%.</span>";
     return '<div class="formula">' + formula + "</div>" + f.map(function (x) {
       return '<div class="factor"><div><b>' + esc(x.name) + '</b><div class="src">' + esc(x.source) + '</div></div><div class="fv">' + (+x.value).toFixed(2) + "</div><div>" + esc(x.why) +
         (x.caveat ? '<div class="src">' + esc(x.caveat) + "</div>" : "") + "</div></div>";
@@ -347,8 +348,8 @@
         '<p class="sub">Highest estimated chance first. Patients under ' + Math.round(d.threshold * 100) + "% are hidden below the list.</p>" +
         (approvedAt ? '<div class="note-ok">Approved ' + esc(approvedAt.slice(0, 16)) + " UTC. The refills and calls below are already done; the boxes are locked.</div>" : "") +
         '<div class="stats">' +
-        '<div class="card stat"><div class="n">' + shown.length + '</div><div class="l">likely affected (shown)</div></div>' +
-        '<div class="card stat"><div class="n">' + hidden.length + '</div><div class="l">low-likelihood (hidden)</div></div>' +
+        '<div class="card stat"><div class="n">' + shown.length + '</div><div class="l">at 5% or more (shown)</div></div>' +
+        '<div class="card stat"><div class="n">' + hidden.length + '</div><div class="l">under 5% (hidden)</div></div>' +
         '<div class="card stat"><div class="n">' + (d.total || 0) + '</div><div class="l">patients with a matching fill</div></div>' +
         '<div class="card stat"><div class="n">' + (d.candidates || 0) + '</div><div class="l">fills checked<div class="muted" style="font-size:11.5px">by NDC and drug-name search</div></div></div></div>' +
         '<div id="plist"></div>' +
@@ -373,7 +374,7 @@
       }
       function sum() {
         var h = document.querySelectorAll(".prow .h:checked").length, c = document.querySelectorAll(".prow .c:checked").length;
-        var t = document.getElementById("sumtxt"); if (t) t.textContent = "Next refill from a non-recalled lot: " + h + " · Call: " + c;
+        var t = document.getElementById("sumtxt"); if (t) t.textContent = "Switch next refill to a non-recalled lot: " + h + " · Call: " + c;
       }
       var hb = document.getElementById("hb");
       if (hb) hb.onclick = function () {
@@ -404,11 +405,21 @@
     var rows = [];
     var loops = Math.max(3, Math.ceil(36 / pool.length));
     for (var k = 0; k < loops; k++) { pool.slice().sort(function () { return Math.random() - 0.5; }).forEach(function (x) { rows.push(x); }); }
+    // the #1 patient must not also appear in the rows just above where the reel stops
+    var n = rows.length;
+    for (var e = Math.max(0, n - 3); e < n; e++) {
+      if (rows[e] !== shown[0]) continue;
+      for (var q = n - 4; q >= 0; q--) {
+        if (rows[q] !== shown[0] && (q === 0 || rows[q - 1] !== shown[0]) && (q + 1 >= n || rows[q + 1] !== shown[0])) { rows[e] = rows[q]; rows[q] = shown[0]; break; }
+      }
+    }
     var target = rows.length;
     rows.push(shown[0]);
-    rows.push(shown[1] || pool[0]); rows.push(shown[2] || pool[0]); rows.push(pool[0]);
+    // the rows after the stop are other patients (never the #1 again); empty spacer rows if there are none
+    var others = pool.filter(function (x) { return x !== shown[0]; });
+    for (var j = 0; j < 3; j++) rows.push(others[j] || null);
     pl.className = "";
-    pl.innerHTML = '<div class="reelwrap" id="reelwrap"><div class="reel" id="reel">' + rows.map(function (r, i) { return prow(r, i === target ? 0 : i, { reel: true, num: i === target }); }).join("") + '</div><div class="scanline" id="scanline"></div></div>';
+    pl.innerHTML = '<div class="reelwrap" id="reelwrap"><div class="reel" id="reel">' + rows.map(function (r, i) { return r ? prow(r, i === target ? 0 : i, { reel: true, num: i === target }) : '<div class="prow" style="visibility:hidden"></div>'; }).join("") + '</div><div class="scanline" id="scanline"></div></div>';
     var wrap = document.getElementById("reelwrap"), reel = document.getElementById("reel"), line = document.getElementById("scanline");
     var items = reel.children, tEl = items[target];
     var wrapH = wrap.clientHeight, rowH = tEl.offsetHeight;
@@ -448,7 +459,7 @@
         '<circle id="arc" cx="59" cy="59" r="52" stroke="#0f766e" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="0"/></svg>' +
         '<div class="tl"><span id="left">--:--</span><small>left</small></div></div>' +
         '<div><div style="font-weight:700;font-size:17px">This approval works once and expires in 10 minutes.</div>' +
-        '<div class="muted small">IRIS Workflow task "RecallReach approval #' + esc(a.id) + '" (role Pharmacist)' + (a.status === "pending" ? " is waiting. " : ". ") + traceLink(a.session_id, "Open in Visual Trace") + "</div>" +
+        '<div class="muted small">IRIS Workflow task "RecallReach approval #' + esc(a.id) + '" (role Pharmacist)' + '<span id="wfstate">' + (a.status === "pending" ? " is waiting." : " is closed.") + "</span> " + traceLink(a.session_id, "Open in Visual Trace") + "</div>" +
         '<div id="st" style="margin-top:8px">' + statusPill(a.status === "pending" ? "awaiting_approval" : a.status) + "</div></div></div>" +
         '<div class="plan"><div class="card"><div class="n">' + a.plan.hold.length + '</div><div>' + (a.plan.hold.length === 1 ? "next refill" : "next refills") + ' to fill from a non-recalled lot</div><div class="muted small">The medicine is not stopped.</div></div>' +
         '<div class="card"><div class="n">' + a.plan.contact.length + '</div><div>' + (a.plan.contact.length === 1 ? "patient" : "patients") + ' to call</div></div></div>' +
@@ -488,6 +499,7 @@
       document.getElementById("no").onclick = function () { decide("reject"); };
       function showResult(x) {
         var st = document.getElementById("st"); if (st) st.innerHTML = statusPill(x.status === "pending" ? "awaiting_approval" : x.status);
+        var wf = document.getElementById("wfstate"); if (wf && x.status !== "pending") wf.textContent = " is closed.";
         var res = document.getElementById("res"); if (!res) return;
         if (x.status === "approved") {
           res.innerHTML = '<div class="result ok"><b>Approved.</b> ' + plural(x.holds || 0, "next refill") + " will be filled from a non-recalled lot and " + plural(x.contacts || 0, "patient") + ((x.contacts || 0) === 1 ? " is" : " are") + ' on the call list. This link can\'t be used again.</div>' +
@@ -590,16 +602,21 @@
           '<div><div class="n">' + s.ndc_package_hit_pct + '%</div><div>found an exact FDA package NDC</div></div>' +
           '<div><div class="n">' + s.ingredient_hit_pct + '%</div><div>ingredient matches FDA generic name</div></div></div>' +
           '<p class="small">Extracted an NDC that FDA does not list: <b>' + s.with_wrong_ndc + "</b> recalls.</p>" +
-          "<h2 style=\"margin-top:18px\">Where it missed (NDC or ingredient), " + s.wrong_examples.length + " shown</h2><div class=\"tablewrap\"><table><tr><th>Recall</th><th>FDA NDCs (hidden from the extractor)</th><th>Extracted</th><th>Ingredient read</th><th>FDA generic name</th></tr>" +
+          "<h2 style=\"margin-top:18px\">Where it missed (NDC or ingredient), " + s.wrong_examples.length + " shown</h2><div class=\"tablewrap\"><table class=\"acc\"><tr><th>Recall</th><th>FDA NDCs (hidden from the extractor)</th><th>Extracted</th><th>Ingredient read</th><th>FDA generic name</th></tr>" +
           s.wrong_examples.map(function (w) {
             return '<tr><td class="mono">' + esc(w.recall_number) + '</td><td class="mono small">' + esc(w.fda_ndcs.slice(0, 3).join(" ")) + (w.fda_ndcs.length > 3 ? " +" + (w.fda_ndcs.length - 3) : "") +
               '</td><td class="mono small">' + esc((w.extracted || []).slice(0, 3).join(" ") || "none") + "</td><td>" + esc(w.ingredient || "none") + '</td><td class="small">' + esc(w.fda_generic) + "</td></tr>";
-          }).join("") + "</table></div></div>";
+          }).join("") + "</table></div>" +
+          (s.extractor.indexOf("rule-based") >= 0 ? "" : '<p class="muted small">Some "misses" are FDA\'s own field, not the extractor: for D-0616-2021 Claude read "Insulin aspart", while FDA\'s generic name field says "WATER INJECTION". They are still counted as misses.</p>') + "</div>";
       }
       app.innerHTML = "<h1>How accurate is the reading?</h1>" +
         '<p class="sub">' + a.benchmark_size + " real FDA recalls. FDA's own NDC list is hidden from the extractor, which reads only the notice text. We compare its answers with FDA's list. Misses are listed below.</p>" +
         (a.llm ? block(a.llm, "AI Hub agent: Claude (recorded live replies)") :
           '<div class="card"><b>Live LLM accuracy: not measured in this build.</b><div class="muted small">No model was called when this image was built. Put a key in <span class="mono">.env</span> and run <span class="mono">tools/run_benchmark.sh</span>: every reply is recorded, then shown here and replayed without a key.</div></div>') +
+        (a.tool_changed && a.tool_changed.consumer ? '<div class="card" style="margin-top:16px"><h2>The tool result changes the decision</h2>' +
+          '<p>In <b>' + a.tool_changed.consumer + "</b> of the " + a.tool_changed.recordings + " recorded Claude runs the agent judged the recall consumer-level. In <b>" + a.tool_changed.contact +
+          "</b> the LookupDispensed tool reported fills of the recalled NDCs and the agent chose patient contact. In the other <b>" + (a.tool_changed.shelf + a.tool_changed.none) +
+          "</b> the tool reported 0 fills of the recalled NDCs here, so nobody is called: " + a.tool_changed.shelf + " shelf checks, " + a.tool_changed.none + " no action (never dispensed). Example: " + esc(a.tool_changed.example || "") + ".</p></div>" : "") +
         block(a.reference, "Rule-based reference extractor (baseline; replay uses it only for a recall with no recording)") +
         '<div class="card" style="margin-top:16px"><h2>Agent calls (traced as Interoperability messages)</h2><p class="muted small">Spent $' + (+calls.spent_usd).toFixed(2) + ". Each row is also an AgentRequest/AgentResponse pair in Visual Trace. In replay mode the agent runs for real but the reply comes from the local endpoint (a recorded Claude output, or a rule-based reply), so no model is called and no tokens are spent.</p>" +
         '<div class="tablewrap"><table><tr><th>Time (UTC)</th><th>Recall</th><th>Mode</th><th>Model</th><th>Tokens in/out</th><th>Cost</th><th>Latency</th><th>Trace</th></tr>' +
