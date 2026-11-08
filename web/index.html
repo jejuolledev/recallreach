@@ -15,9 +15,9 @@
   </a>
   <nav class="tabs">
     <a href="#/" data-tab="inbox">Recalls</a>
-    <a href="#/scan" data-tab="scan">Scan barcode</a>
+    <a href="#/scan" data-tab="scan">Scan<span class="long"> barcode</span></a>
     <a href="#/accuracy" data-tab="accuracy">Accuracy</a>
-    <a href="#/audit" data-tab="audit">Audit trail</a>
+    <a href="#/audit" data-tab="audit">Audit<span class="long"> trail</span></a>
   </nav>
   <div class="right">
     <span id="mode" class="mode" title="LLM mode"></span>
@@ -26,7 +26,7 @@
     </button>
   </div>
 </header>
-<div id="killbar" class="killbar" hidden>Kill switch is ON. The AI agent does not run, no new recalls are taken in, and nothing can be approved or executed.</div>
+<div id="killbar" class="killbar" hidden>Kill switch is on. The agent is stopped, new recalls are paused, and nothing can be approved or done.</div>
 <main id="app" aria-live="polite"></main>
 <footer class="foot">
   Demo data: <a href="https://physionet.org/content/mimic-iv-demo/2.2/" target="_blank" rel="noopener">MIMIC-IV Clinical Database Demo v2.2</a> (100 real de-identified patients, dates shifted, ODbL) ·
