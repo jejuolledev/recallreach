@@ -60,7 +60,7 @@ Method Execute(req As RecallReach.Msg.ActionRequest, Output resp As RecallReach.
     Set rec.Status = "approved"
     Do rec.%Save()
     Set resp.Holds = holds, resp.Contacts = contacts
-    Do ##class(RecallReach.Data.Audit).Log("ActionExecutor", "actions.executed", appr.RecallNumber, holds_" next fills flagged, "_contacts_" patients on the contact list", ..%SessionId,
+    Do ##class(RecallReach.Data.Audit).Log("ActionExecutor", "actions.executed", appr.RecallNumber, holds_" next fill"_$S(holds=1:"", 1:"s")_" flagged, "_contacts_" patient"_$S(contacts=1:"", 1:"s")_" on the call list", ..%SessionId,
         "Done: "_holds_" next fill"_$S(holds=1:"", 1:"s")_" flagged to be filled from a non-recalled lot, "_contacts_" patient"_$S(contacts=1:"", 1:"s")_" on the call list")
     Quit $$$OK
 }

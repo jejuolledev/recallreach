@@ -159,7 +159,7 @@ ClassMethod Accuracy(dataDir As %String, recordDir As %String) As %String [ Lang
         for r in bench:
             p = os.path.join(recordDir, r["recall_number"] + ".json")
             if os.path.exists(p):
-                rec = json.load(open(p))
+                rec = json.load(open(p, encoding="utf-8"))
                 info = info or "%s, recorded %s" % (rec.get("model", "?"), str(rec.get("recorded_at", ""))[:10])
                 try:
                     v = extract.validate(r, extract.parse_json_reply(rec.get("content", "")))
@@ -171,6 +171,36 @@ ClassMethod Accuracy(dataDir As %String, recordDir As %String) As %String [ Lang
                                  "fda_generic": ""})
     if rows:
         out["llm"] = accuracy.summarize(rows, "AI Hub agent with " + info)
+    # how often the tool result turned a consumer-level recall away from patient contact (all recordings)
+    try:
+        if recordDir and os.path.isdir(recordDir):
+            from collections import Counter
+            disp = Counter(d["ndc"] for d in json.load(open(os.path.join(dataDir, "dispenses.json"))))
+            tc = {"recordings": 0, "consumer": 0, "contact": 0, "shelf": 0, "none": 0, "example": ""}
+            for fn in sorted(os.listdir(recordDir)):
+                if not fn.endswith(".json"):
+                    continue
+                rec = json.load(open(os.path.join(recordDir, fn), encoding="utf-8"))
+                r = recs.get(rec.get("recall_number"))
+                if not r:
+                    continue
+                tc["recordings"] += 1
+                try:
+                    v = extract.validate(r, extract.parse_json_reply(rec.get("content", "")))
+                except Exception:
+                    continue
+                if v["depth"]["value"] != "consumer":
+                    continue
+                tc["consumer"] += 1
+                if v["action"] == "hold_and_contact":
+                    tc["contact"] += 1
+                elif sum(disp[n] for n in v["ndcs"]) == 0:
+                    tc["shelf" if v["action"] == "stock_check" else "none"] += 1
+                    if r["recall_number"] == "D-0010-2016":
+                        tc["example"] = "D-0010-2016, a Class II sterility recall: consumer level, 0 fills, shelf check"
+            out["tool_changed"] = tc
+    except Exception:
+        pass
     return json.dumps(out)
 }
 

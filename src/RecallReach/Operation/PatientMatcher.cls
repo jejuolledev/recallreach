@@ -27,7 +27,7 @@ Method Match(req As RecallReach.Msg.MatchRequest, Output resp As RecallReach.Msg
     Set resp.Shown = rec.PatientsShown, resp.Hidden = rec.PatientsHidden, resp.TopSubject = rec.TopSubject, resp.TopP = rec.TopP, resp.ExpectedAffected = r."expected_affected"
     Do ##class(RecallReach.Data.Audit).Log("PatientMatcher", "patients.ranked", req.RecallNumber,
         rec.PatientsShown_" shown, "_rec.PatientsHidden_" low-likelihood hidden (threshold "_($classmethod(cfg, "Threshold")*100)_"%), "_r.candidates_" candidate fills", ..%SessionId,
-        "Patients ranked: "_rec.PatientsShown_" likely affected, "_rec.PatientsHidden_" under "_($classmethod(cfg, "Threshold")*100)_"% hidden ("_r.candidates_" fill"_$S(r.candidates=1:"", 1:"s")_" checked)")
+        "Patients ranked: "_rec.PatientsShown_" at 5% or more, "_rec.PatientsHidden_" under "_($classmethod(cfg, "Threshold")*100)_"% hidden ("_r.candidates_" fill"_$S(r.candidates=1:"", 1:"s")_" checked)")
     Quit $$$OK
 }
 
