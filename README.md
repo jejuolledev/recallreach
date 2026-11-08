@@ -7,7 +7,9 @@ When the FDA recalls a drug, RecallReach finds which pharmacy patients probably 
 **For judges (2 minutes)**
 1. Load the IRIS AI Hub image (see [Run it](#run-it)), then `docker compose up -d --build` and open http://localhost:52795/recallreach/index.html
 2. Press *Simulate new FDA recall*, open it, press *Find patients*, then *Ask pharmacist approval* and *Approve*.
-3. Real: MIMIC-IV demo patients, openFDA recalls, the IRIS production, tool calls, Workflow approval, audit, and 312 replies from `claude-haiku-5-5` recorded on 2026-11-08 (the 300 benchmark recalls and all 13 demo recalls). Replayed: with no API key (the default) the agent gets those recorded Claude replies back from a local endpoint, so no model is called and nothing is spent. With a key it calls Claude live ([Run with your own key](#run-with-your-own-key)).
+3. Real: MIMIC-IV demo patients, openFDA recalls, the IRIS production, tool calls, Workflow approval, audit, and 312 replies from `claude-haiku-5-5` recorded on 2026-11-08 (300 benchmark recalls + 12 demo recalls; the 13th demo recall, D-0010-2016, is in the benchmark too). Replayed: with no API key (the default) the agent gets those recorded Claude replies back from a local endpoint, so no model is called and nothing is spent. With a key it calls Claude live ([Run with your own key](#run-with-your-own-key)).
+
+**Why an agent:** the tool result changes the decision. In 105 of the 312 recorded Claude runs the agent judged the recall consumer-level; in 10 the tool reported fills of the recalled NDCs and it chose patient contact, in the other 95 the tool reported 0 fills here and it called nobody (74 shelf checks, 21 no action; e.g. D-0010-2016). On reading the ingredient Claude beats the rule-based extractor 98.3% to 82.0%.
 
 ## What it does
 
@@ -122,12 +124,12 @@ P(patient) = average over MIMIC's date shift of [ 1 - product(1 - P(fill)) ]
 
 - Only a scanned lot gives 100% ("exact"). An estimate is capped at 99% and shown rounded (5% steps above 10%, e.g. "≈55%"); the exact factors are in each row's "Why" panel.
 - A scan is saved only if the GTIN check digit is right and the barcode has a lot and an expiry; otherwise nothing is stored.
-- Lot share does little in practice: in 12 of the 13 demo recalls it is either capped at 1.0 (the recall is larger than the Medicaid volume) or the 50% default for liquids and injections; only D-0648-2016 gets a real ratio (0.76). So the ranking mostly comes from product match and time on shelf. The "Why" panel says which case applies.
+- Lot share does little in practice: in 12 of the 13 demo recalls it is either capped at 1.0 (the recall is larger than the Medicaid volume) or the 50% default (liquids and injections, or an NDC with no Medicaid data in the window, such as D-1206-2018); only D-0648-2016 gets a real ratio (0.76). So the ranking mostly comes from product match and time on shelf. The "Why" panel says which case applies.
 - Rows under 5% are hidden below the list. Medicaid covers only part of US dispensing, so the lot share over-states the true share; each row's "Why" panel says so.
 
 ## Numbers you can check
 
-- Demo recall **D-1206-2018** (Class I, Hydrochlorothiazide Tablets USP 12.5 mg, Accord Healthcare, NDC 16729-182-01, lot PW05264 exp 11/2019, 46,632 bottles, nationwide; reason: the bottle held Spironolactone 25 mg). 6 MIMIC patients have a hydrochlorothiazide order; 2 of them got the recalled NDC. 1 shown, 5 under 5%. With lot PW05264 scanned for patient 10012853: 100%, "Lot confirmed". Without a scan she is first at about 10% (0.12 before rounding).
+- Demo recall **D-1206-2018** (Class I, Hydrochlorothiazide Tablets USP 12.5 mg, Accord Healthcare, NDC 16729-182-01, lot PW05264 exp 11/2019, 46,632 bottles, nationwide; reason: the bottle held Spironolactone 25 mg). 6 MIMIC patients have a hydrochlorothiazide order; 2 of them got the recalled NDC. 1 at 5% or more (shown), 5 under 5%. With lot PW05264 scanned for patient 10012853: 100%, "Lot confirmed". Without a scan she is first at about 10% (0.12 before rounding).
 - D-0464-2017 (Class II, oxycodone oral solution, water possibly contaminated with *Burkholderia cepacia*): consumer level (inferred), 14 shown, 50 under 5%.
 - D-1226-2015 (Lisinopril 5 mg, Class II, complaint-handling problem): retail level (inferred), shelf check for lot 131928. The tool still reports 11 orders of the recalled NDC for 7 patients; nobody is called.
 - Depth in the 647 shipped recalls: stated in the text for 2; inferred for the rest.
@@ -138,11 +140,12 @@ P(patient) = average over MIMIC's date shift of [ 1 - product(1 - P(fill)) ]
   |---|---|---|
   | Found an FDA product NDC | **99.3%** | 99.7% |
   | Found an exact FDA package NDC | **99.3%** | 99.7% |
-  | Ingredient matches FDA's generic name | **98.0%** | 81.7% |
+  | Ingredient matches FDA's generic name | **98.3%** | 82.0% |
   | Extracted an NDC that FDA does not list | **0 of 300** | 0 of 300 |
 
-  Claude's 0.4-point NDC gap is its 2 replies out of 300 that were not valid JSON (D-0354-2025, D-0842-2022); they are counted as misses, not retried. Its ingredient misses are listed on the page (e.g. it read "Insulin aspart" where FDA's generic name field says "WATER INJECTION"). The rule-based extractor's weak spot is brand names like "Kids' Cough and Chest Congestion".
-- **Cost of the live run:** 312 agent calls (the 300 benchmark recalls plus the 12 demo recalls that are not in the benchmark; the demo has 13 recalls and D-0010-2016 is in both), 739,862 input and 417,387 output tokens as reported by the API, **$0.28** at the list price of $0.10 / $0.50 per million tokens. About 6 s and $0.0009 per recall (two model turns with one tool call). The agent's decision matched the rule-based decision on all 13 demo recalls.
+  Claude's 0.4-point NDC gap is its 2 replies out of 300 that were not valid JSON (D-0354-2025, D-0842-2022); they are counted as misses, not retried. Its ingredient misses are listed on the page; some are FDA's own field, not Claude (D-0616-2021: Claude read "Insulin aspart", FDA's generic name field says "WATER INJECTION"). We still count them as misses. The rule-based extractor's weak spot is brand names like "Kids' Cough and Chest Congestion".
+- Scoring notes: an ingredient counts as matched when one of its words (longer than 3 letters) is in FDA's generic or substance name; words are split on spaces and punctuation, so "Ampicillin/Sulbactam" matches. Claude left the lot expiry empty in many replies when the notice gave only a month ("Exp. 11/2019"); the validator fills it from the notice and marks the field "expiry filled by the validator from the notice" (the recordings themselves are unchanged). Expiry is not part of the accuracy score.
+- **Cost of the live run:** 312 agent calls (the 300 benchmark recalls plus the 12 demo recalls that are not in the benchmark; the demo has 13 recalls and D-0010-2016 is in both), 739,862 input and 417,387 output tokens as reported by the API, **$0.28** at the list price of $0.10 / $0.50 per million tokens. About 8 s of wall-clock time (300 benchmark recalls in 40 minutes) and $0.0009 per recall (two model turns with one tool call). The agent's decision matched the rule-based decision on all 13 demo recalls.
 
 ## Run with your own key
 
@@ -159,7 +162,7 @@ The script restarts the container with the key (container environment only; the 
 ./tools/run_tests.sh
 ```
 
-- 36 Python unit tests (`python/tests/test_core.py`, run with IRIS's `irispython`): NDC layouts, GS1 parsing, extraction on a real recall, recall depth (stated, inferred, guard rail, agent quote must be in the notice), decision per depth, singular/plural, hallucinated evidence, JSON reply parsing, MIMIC date windows, lot window, lot share, exact only from a scanned lot, estimate cap, ranking, vectors, accuracy scoring.
+- 37 Python unit tests (`python/tests/test_core.py`, run with IRIS's `irispython`): NDC layouts, GS1 parsing, extraction on a real recall, recall depth (stated, inferred, guard rail, agent quote must be in the notice), decision per depth, singular/plural, expiry filled from the notice when the model leaves it empty, hallucinated evidence, JSON reply parsing, MIMIC date windows, lot window, lot share, exact only from a scanned lot, estimate cap, ranking, vectors, accuracy scoring.
 - ObjectScript `%UnitTest` `RecallReach.Tests.ApprovalTest` (14 test methods): token stored only as SHA-256, 10-minute expiry, single use, kill switch, reject needs a reason, plan only from the ranked list, a shelf-check recall takes no patient plan, duplicate patients count once, audit rows cannot be edited, replay + validation bridge (including the depth rule), GS1 bridge, time arithmetic.
 - `tools/screens.mjs`: headless Playwright walk-through (screenshots in `_screens/`), a 10-spin check at 1440 px and 390 px that the reel stops on the #1 patient, and the video for `docs/spin.gif`.
 
