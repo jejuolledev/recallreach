@@ -15,6 +15,12 @@ page.on("pageerror", e => log("PAGE ERROR", e.message));
 const shot = async (n) => { await page.screenshot({ path: `${OUT}/${n}.png` }); log("shot", n); };
 
 await api("/demo/reset", "POST");
+// video scenario: weeks earlier, the pharmacist scanned the box when filling patient 10002428 (fill 1115)
+await page.goto(BASE + "/recallreach/index.html#/scan");
+await page.click("#sample"); await sleep(600); await page.click("#parse");
+await page.waitForSelector('.rec[data-id="1115"]', { timeout: 15000 });
+await page.click('.rec[data-id="1115"]'); await sleep(800);
+await shot("00_scan_lot_at_dispensing");
 await page.goto(BASE + "/recallreach/index.html#/");
 await page.waitForSelector(".rcard");
 await shot("01_inbox");
@@ -44,10 +50,6 @@ const again = await api(`/approvals/${token}/approve`, "POST");
 log("re-use approval ->", again.s, again.j.error);
 await page.goto(BASE + "/recallreach/index.html#/recall/" + RN + "/patients");
 await sleep(1500); await shot("11_after_approval_holds");
-await page.goto(BASE + "/recallreach/index.html#/scan");
-await page.click("#sample"); await sleep(600); await page.click("#parse");
-await page.waitForSelector(".rec", { timeout: 15000 }); await sleep(300);
-await shot("12_scan_barcode");
 await page.goto(BASE + "/recallreach/index.html#/accuracy");
 await page.waitForSelector(".big3", { timeout: 60000 }); await sleep(300);
 await shot("13_accuracy");

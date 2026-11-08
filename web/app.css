@@ -14,7 +14,7 @@ button{font:inherit;cursor:pointer}
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;color:var(--ink);text-decoration:none;letter-spacing:-.01em}
 .logo{width:30px;height:30px;color:var(--brand)} .logo svg{width:30px;height:30px;display:block}
 .tabs{display:flex;gap:4px}
-.tabs a{padding:8px 14px;border-radius:10px;color:var(--ink2);text-decoration:none;font-weight:500}
+.tabs a{white-space:nowrap;padding:8px 14px;border-radius:10px;color:var(--ink2);text-decoration:none;font-weight:500}
 .tabs a.on{background:var(--brandbg);color:var(--brand)}
 .tabs a:hover{background:var(--graybg)}
 .right{margin-left:auto;display:flex;align-items:center;gap:14px}
