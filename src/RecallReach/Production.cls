@@ -21,6 +21,8 @@ XData ProductionDefinition
   <Item Name="ApprovalFlow" Category="RecallReach" ClassName="RecallReach.Process.ApprovalFlow" PoolSize="1" Enabled="true" />
   <Item Name="RecallReaderAgent" Category="RecallReach" ClassName="RecallReach.Operation.RecallReaderAgent" PoolSize="1" Enabled="true">
     <Setting Target="Adapter" Name="AgentClass">RecallReach.AI.RecallReaderAgent</Setting>
+    <Setting Target="Adapter" Name="AuthPolicy">RecallReach.AI.KillSwitchPolicy</Setting>
+    <Setting Target="Adapter" Name="AuditPolicy">RecallReach.AI.ToolAudit</Setting>
   </Item>
   <Item Name="PatientMatcher" Category="RecallReach" ClassName="RecallReach.Operation.PatientMatcher" PoolSize="1" Enabled="true" />
   <Item Name="ActionExecutor" Category="RecallReach" ClassName="RecallReach.Operation.ActionExecutor" PoolSize="1" Enabled="true" />

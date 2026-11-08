@@ -26,6 +26,7 @@ Method Read(req As RecallReach.Msg.AgentRequest, Output resp As RecallReach.Msg.
     Set rec = ##class(RecallReach.Data.Recall).RecallIdxOpen(req.RecallNumber)
     If '$ISOBJECT(rec) Quit $$$ERROR($$$GeneralError, "unknown recall")
     Set srcJson = $classmethod(cfg, "ReadStream", rec.SourceJSON)
+    Set ^||RecallReach("Recall") = req.RecallNumber
     Set t0 = $ZH
     Set sc = ..Adapter.SendChat(req.UserPrompt, .llm)
     Set ms = ($ZH - t0) * 1000 \ 1

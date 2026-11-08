@@ -24,11 +24,27 @@ ClassMethod NoticeText(recallJson As %String) As %String [ Language = python ]
 }
 
 /// Deterministic reference extractor output (same JSON shape the LLM must return).
-ClassMethod ReferenceReply(recallJson As %String) As %String [ Language = python ]
+ClassMethod ReferenceReply(recallJson As %String, toolResult As %String = "") As %String [ Language = python ]
 {
     import json
     from recallreach_core import extract
-    return json.dumps(extract.reference_extract(json.loads(recallJson)))
+    rec = json.loads(recallJson)
+    out = extract.reference_extract(rec)
+    if toolResult:
+        try:
+            out["decision"] = extract.reference_decide(rec, out, json.loads(toolResult))
+        except Exception:
+            pass
+    return json.dumps(out)
+}
+
+/// arguments the rule-based replay uses when it calls the LookupDispensed tool
+ClassMethod ReferenceToolArgs(recallJson As %String) As %String [ Language = python ]
+{
+    import json
+    from recallreach_core import extract
+    out = extract.reference_extract(json.loads(recallJson))
+    return json.dumps({"ndcs": ", ".join(n["value"] for n in out["ndcs"]), "ingredient": out["ingredient"]["value"]})
 }
 
 /// Parse + validate an agent reply against the notice text. Returns JSON or {"error":...}.
@@ -44,6 +60,12 @@ ClassMethod Validate(recallJson As %String, content As %String) As %String [ Lan
     v = extract.validate(rec, data)
     v["evidence_not_found"] = sum(1 for f in v["fields"] if f["note"] == "evidence not found in notice")
     return json.dumps(v)
+}
+
+ClassMethod NDC11(raw As %String) As %String [ Language = python ]
+{
+    from recallreach_core import ndc
+    return ndc.to_11(raw) or ""
 }
 
 ClassMethod StripFences(content As %String) As %String [ Language = python ]
@@ -153,31 +175,35 @@ ClassMethod Accuracy(dataDir As %String, recordDir As %String) As %String [ Lang
 /// Load the shipped data files into IRIS tables (idempotent).
 ClassMethod LoadData(dataDir As %String) As %String [ Language = python ]
 {
-    import json, os, iris
+    import json, os, iris, traceback
     from recallreach_core import vectors
-    iris.sql.exec("DELETE FROM RecallReach_Data.Patient")
-    iris.sql.exec("DELETE FROM RecallReach_Data.Dispense")
-    iris.sql.exec("DELETE FROM RecallReach_Data.DrugName")
-    pats = json.load(open(os.path.join(dataDir, "patients.json")))
-    for p in pats:
-        iris.sql.exec("INSERT INTO RecallReach_Data.Patient (SubjectId, Gender, AnchorAge, AnchorYear, AnchorYearGroup) VALUES (?,?,?,?,?)",
-                      p["subject_id"], p["gender"], p["anchor_age"], p["anchor_year"], p["anchor_year_group"])
-    disp = json.load(open(os.path.join(dataDir, "dispenses.json")))
-    names = {}
-    ins = ("INSERT INTO RecallReach_Data.Dispense (DispenseId, SubjectId, HadmId, StartTime, Drug, DrugNorm, NDC, Strength, Form, Route, Dose, Discharge, HoldNextFill) "
-           "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)")
-    for d in disp:
-        norm = vectors.normalize(d["drug"])
-        key = d["drug"][:200].strip().lower()
-        if key not in names:
-            names[key] = [d["drug"][:200].strip(), 0]
-        names[key][1] += 1
-        iris.sql.exec(ins, d["id"], d["subject_id"], d["hadm_id"], d["starttime"], d["drug"][:200], norm[:200], d["ndc"],
-                      d["strength"][:200], d["form"][:100], d["route"][:50], d["dose"][:100], d["discharge"][:100])
-    for name, n in names.values():
-        iris.sql.exec("INSERT INTO RecallReach_Data.DrugName (Name, Norm, Vec, Uses) VALUES (?,?,TO_VECTOR(?, DOUBLE, 128),?)",
-                      name[:200], vectors.normalize(name)[:200], vectors.to_iris(vectors.embed(name)), n)
-    return json.dumps({"patients": len(pats), "dispenses": len(disp), "drug_names": len(names)})
+    step = "start"
+    try:
+        step = "patients"
+        pats = json.load(open(os.path.join(dataDir, "patients.json")))
+        for p in pats:
+            iris.sql.exec("INSERT INTO RecallReach_Data.Patient (SubjectId, Gender, AnchorAge, AnchorYear, AnchorYearGroup) VALUES (?,?,?,?,?)",
+                          p["subject_id"], p["gender"], p["anchor_age"], p["anchor_year"], p["anchor_year_group"])
+        step = "dispenses"
+        disp = json.load(open(os.path.join(dataDir, "dispenses.json")))
+        names = {}
+        ins = ("INSERT INTO RecallReach_Data.Dispense (DispenseId, SubjectId, HadmId, StartTime, Drug, DrugNorm, NDC, Strength, Form, Route, Dose, Discharge, HoldNextFill) "
+               "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)")
+        for d in disp:
+            norm = vectors.normalize(d["drug"])
+            key = d["drug"][:200].strip().lower()
+            if key not in names:
+                names[key] = [d["drug"][:200].strip(), 0]
+            names[key][1] += 1
+            iris.sql.exec(ins, d["id"], d["subject_id"], d["hadm_id"], d["starttime"], d["drug"][:200], norm[:200], d["ndc"],
+                          d["strength"][:200], d["form"][:100], d["route"][:50], d["dose"][:100], d["discharge"][:100])
+        step = "drug names"
+        for name, n in names.values():
+            iris.sql.exec("INSERT INTO RecallReach_Data.DrugName (Name, Norm, Vec, Uses) VALUES (?,?,TO_VECTOR(?, DOUBLE, 128),?)",
+                          name, vectors.normalize(name)[:200], vectors.to_iris(vectors.embed(name)), n)
+        return json.dumps({"patients": len(pats), "dispenses": len(disp), "drug_names": len(names)})
+    except Exception:
+        return json.dumps({"error": step + ": " + traceback.format_exc()[-1500:]})
 }
 
 }

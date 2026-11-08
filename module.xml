@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="Cache" version="25">
+  <Document name="recallreach.ZPM">
+    <Module>
+      <Name>recallreach</Name>
+      <Version>1.0.0</Version>
+      <Description>FDA drug recall -> IRIS AI Hub agent reads it and decides -> patients ranked by estimated probability -> pharmacist approval through the Workflow Engine (10 minutes, single use) -> holds and call list. Kill switch and full audit trail.</Description>
+      <Keywords>AI Hub,interoperability,workflow,FDA recall,pharmacy,vector search,embedded python</Keywords>
+      <Author><Person>Jeonggil Bae</Person><Organization>MoaHub</Organization></Author>
+      <Packaging>module</Packaging>
+      <SystemRequirements Version=">=2026.3" Interoperability="enabled"/>
+      <SourcesRoot>src</SourcesRoot>
+      <Resource Name="RecallReach.PKG"/>
+      <FileCopy Name="python/recallreach_core/" Target="${mgrdir}python/recallreach_core/"/>
+      <FileCopy Name="data/" Target="/opt/recallreach/data/"/>
+      <FileCopy Name="web/" Target="/opt/recallreach/web/"/>
+      <Invoke Class="RecallReach.Core.Setup" Method="Run"/>
+      <UnitTest Name="/src" Package="RecallReach.Tests" Phase="test"/>
+    </Module>
+  </Document>
+</Export>

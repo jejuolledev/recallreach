@@ -7,7 +7,12 @@ ClassMethod Run(dataDir As %String = "/opt/recallreach/data") As %Status
     Set sc = $$$OK
     Try {
         Write "loading data...", !
-        Write ##class(RecallReach.Core.Py).LoadData(dataDir), !
+        Do ##class(RecallReach.Data.Patient).%KillExtent()
+        Do ##class(RecallReach.Data.Dispense).%KillExtent()
+        Do ##class(RecallReach.Data.DrugName).%KillExtent()
+        Set out = ##class(RecallReach.Core.Py).LoadData(dataDir)
+        Write out, !
+        If out [ """error""" $$$ThrowStatus($$$ERROR($$$GeneralError, "data load failed"))
         $$$ThrowOnError(..LoadRecalls(dataDir))
         $$$ThrowOnError(..WebApps())
         Set ^RecallReach("Threshold") = 0.05
@@ -22,7 +27,7 @@ ClassMethod Run(dataDir As %String = "/opt/recallreach/data") As %Status
 /// all shipped recalls go into the pool; history is processed on first start
 ClassMethod LoadRecalls(dataDir As %String) As %Status
 {
-    &sql(DELETE FROM RecallReach_Data.Recall)
+    Do ##class(RecallReach.Data.Recall).%KillExtent()
     Set arr = [].%FromJSONFile(dataDir_"/recalls.json")
     Set it = arr.%GetIterator()
     While it.%GetNext(.i, .r) {

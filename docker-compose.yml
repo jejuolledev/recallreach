@@ -7,6 +7,8 @@ services:
     image: recallreach:latest
     container_name: recallreach
     restart: unless-stopped
+    ulimits:
+      core: 0          # no multi-GB core files if a native library crashes
     ports:
       - "${RR_PORT:-52795}:52773"   # web: http://localhost:52795/recallreach/
       - "${RR_SUPERSERVER_PORT:-51795}:1972"

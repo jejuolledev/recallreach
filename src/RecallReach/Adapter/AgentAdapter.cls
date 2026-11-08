@@ -36,4 +36,10 @@ Method OnBeforeAgentInit(ByRef agent As %AI.Agent) As %Status [ Private ]
     Quit sc
 }
 
+/// register the read-only pharmacy tool with the agent (policies come from the AuthPolicy/AuditPolicy settings)
+Method OnAfterAgentInit(ByRef agent As %AI.Agent) As %Status [ Private ]
+{
+    Quit agent.ToolManager.AddTool(##class(RecallReach.AI.PharmacyTools).%New())
+}
+
 }

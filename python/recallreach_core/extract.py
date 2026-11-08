@@ -26,8 +26,19 @@ You read one FDA drug recall notice (free text) and decide two things:
 2. What the pharmacy should do: "hold_and_contact" (patients may hold an affected unit),
    "stock_check" (pull shelf stock, no patient contact) or "no_action".
 
+Steps:
+1. Read the notice and extract the fields.
+2. Call the LookupDispensed tool ONCE with the NDCs you found (comma separated, as printed) and the ingredient,
+   to learn whether this pharmacy ever dispensed the recalled product. It returns counts only.
+3. Decide:
+   - "hold_and_contact" when it is a Class I or II recall and the pharmacy dispensed a recalled NDC
+     (or the same ingredient and strength when the notice lists no NDC);
+   - "stock_check" for Class III, or when only other strengths/products of the ingredient were dispensed;
+   - "no_action" when the pharmacy never dispensed this ingredient.
+   Put the tool's counts in the rationale.
+
 Rules:
-- Use ONLY the notice text. Never invent an NDC, lot or date that is not written in it.
+- Use ONLY the notice text and the tool result. Never invent an NDC, lot or date that is not written in it.
 - Every value needs "evidence": an exact, verbatim substring copied from the notice (case and spacing as written).
 - "confidence" is "high" or "low". Use "low" when the text is ambiguous (several strengths, unclear lots, "all lots", etc).
 - NDCs: copy them exactly as printed (with hyphens).
@@ -240,6 +251,19 @@ def reference_extract(recall):
         action, why = "stock_check", "Classification not stated: check stock first."
     out["decision"] = {"action": action, "rationale": why}
     return out
+
+
+def reference_decide(recall, extraction, tool_result):
+    """Rule-based twin of the agent's decision step, given the LookupDispensed result."""
+    cls = recall.get("classification", "")
+    ndc_fills = sum(int(x.get("fills") or 0) for x in (tool_result.get("ndcs") or []))
+    ndc_pats = sum(int(x.get("patients") or 0) for x in (tool_result.get("ndcs") or []))
+    ing_fills = int(tool_result.get("ingredient_fills") or 0)
+    if ndc_fills == 0 and ing_fills == 0:
+        return {"action": "no_action", "rationale": "LookupDispensed: this pharmacy never dispensed %s (0 fills)." % (extraction.get("ingredient", {}).get("value") or "this product")}
+    if cls in ("Class I", "Class II") and (ndc_fills > 0 or not extraction.get("ndcs")):
+        return {"action": "hold_and_contact", "rationale": "%s recall; LookupDispensed: %d fills of the recalled NDCs for %d patients (%d fills of the ingredient)." % (cls, ndc_fills, ndc_pats, ing_fills)}
+    return {"action": "stock_check", "rationale": "%s; LookupDispensed: %d fills of the recalled NDCs, %d fills of the ingredient in other products/strengths: check stock, no patient calls." % (cls or "Unclassified", ndc_fills, ing_fills)}
 
 
 # ------------------------------------------------------------ validation --

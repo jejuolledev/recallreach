@@ -34,6 +34,8 @@ Method Clean()
     &sql(DELETE FROM RecallReach_Data.Recall WHERE RecallNumber = :rn)
     &sql(DELETE FROM RecallReach_Data.Approval WHERE RecallNumber = :rn)
     &sql(DELETE FROM RecallReach_Data.Contact WHERE RecallNumber = :rn)
+    // test rows only (the app itself has no edit/delete path for audit rows)
+    &sql(DELETE FROM RecallReach_Data.Audit WHERE RecallNumber = :rn OR Actor = 'unit test')
 }
 
 /// a recall in "ready" state with two ranked patients

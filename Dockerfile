@@ -19,4 +19,5 @@ COPY --chown=irisowner:irisowner iris.script /tmp/iris.script
 # compile, load data, run the six history recalls through the real production (replay mode), then stop
 RUN iris start IRIS \
  && iris session IRIS < /tmp/iris.script \
- && iris stop IRIS quietly
+ && iris stop IRIS quietly \
+ && rm -f /usr/irissys/mgr/journal/2* /usr/irissys/mgr/IRIS.WIJ
