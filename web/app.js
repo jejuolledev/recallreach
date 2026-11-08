@@ -84,9 +84,9 @@
   }
   function fdaDate(d) { return d && d.length === 8 ? d.slice(0, 4) + "-" + d.slice(4, 6) + "-" + d.slice(6) : d || ""; }
   // what produced the agent's answer; in rule-based replay no model is called, so no model id is shown
-  function sourceLabel(src, model) {
-    if (src === "llm") return "Live LLM reply · model " + (model || "?");
-    if (src === "replay-recorded") return "Recorded LLM reply from " + (model || "?") + " (replay, no new call)";
+  function sourceLabel(src, model, at) {
+    if (src === "llm") return "Live reply · model " + (model || "?");
+    if (src === "replay-recorded") return "Replay of recorded Claude output (" + (model || "?") + ", " + (at || "date unknown") + "), no new call";
     return "Replay (rule-based, no LLM call)";
   }
   function depthLine(r) {
@@ -127,9 +127,10 @@
       state.status = s;
       var m = document.getElementById("mode");
       if (s.mode === "live") { m.className = "mode live"; m.textContent = "Live AI Hub agent · " + s.model; }
+      else if (s.recordings) { m.className = "mode"; m.textContent = "Replay of recorded Claude outputs · " + s.recorded_at; }
       else { m.className = "mode"; m.textContent = "Replay mode · no LLM call"; }
       m.title = s.mode === "live" ? "Anthropic via IRIS AI Hub. Spent $" + (+s.spent_usd).toFixed(4) + " of $" + s.spend_cap_usd :
-        "IRIS AI Hub agent runs against the local replay endpoint (recorded or rule-based replies). Set ANTHROPIC_API_KEY for live mode.";
+        "No API key: the IRIS AI Hub agent runs against the local replay endpoint, which returns the recorded " + (s.model || "") + " reply for a recall when one ships (" + (s.recordings || 0) + " do), else a rule-based reply. Set ANTHROPIC_API_KEY for live mode.";
       var k = document.getElementById("kill");
       k.classList.toggle("on", !!s.killswitch);
       document.getElementById("killbar").hidden = !s.killswitch;
@@ -241,7 +242,7 @@
               (f.note ? '<div class="note">' + esc(f.note) + "</div>" : "") + "</div>";
           }).join("") + "</div>") +
         '<div class="decision"><div class="muted small">Why the agent decided this</div><div>' + esc(r.rationale || "") + "</div>" +
-        '<div class="muted small" style="margin-top:8px">' + esc(sourceLabel(r.source, r.model)) + " · " + traceLink(r.session_id, "Open in Visual Trace") + "</div></div>" +
+        '<div class="muted small" style="margin-top:8px">' + esc(sourceLabel(r.source, r.model, r.recorded_at)) + " · " + traceLink(r.session_id, "Open in Visual Trace") + "</div></div>" +
         "</div></div></div>";
       // linked highlights
       function hot(i, on) {
@@ -489,7 +490,7 @@
         var st = document.getElementById("st"); if (st) st.innerHTML = statusPill(x.status === "pending" ? "awaiting_approval" : x.status);
         var res = document.getElementById("res"); if (!res) return;
         if (x.status === "approved") {
-          res.innerHTML = '<div class="result ok"><b>Approved.</b> ' + plural(x.holds || 0, "next refill") + " will be filled from a non-recalled lot and " + plural(x.contacts || 0, "patient") + ' are on the call list. This link can\'t be used again.</div>' +
+          res.innerHTML = '<div class="result ok"><b>Approved.</b> ' + plural(x.holds || 0, "next refill") + " will be filled from a non-recalled lot and " + plural(x.contacts || 0, "patient") + ((x.contacts || 0) === 1 ? " is" : " are") + ' on the call list. This link can\'t be used again.</div>' +
             '<div class="row wrap" style="margin-top:14px"><button class="btn ghost" id="again">Try this link again</button><a class="btn ghost" href="#/recall/' + encodeURIComponent(rn) + '/patients">See the patient list</a><a class="btn ghost" href="#/audit">Audit trail</a></div><div id="againres"></div>';
           var ag = document.getElementById("again");
           if (ag) ag.onclick = function () {
@@ -597,14 +598,14 @@
       }
       app.innerHTML = "<h1>How accurate is the reading?</h1>" +
         '<p class="sub">' + a.benchmark_size + " real FDA recalls. FDA's own NDC list is hidden from the extractor, which reads only the notice text. We compare its answers with FDA's list. Misses are listed below.</p>" +
-        (a.llm ? block(a.llm, "AI Hub agent (recorded live replies)") :
+        (a.llm ? block(a.llm, "AI Hub agent: Claude (recorded live replies)") :
           '<div class="card"><b>Live LLM accuracy: not measured in this build.</b><div class="muted small">No model was called when this image was built. Put a key in <span class="mono">.env</span> and run <span class="mono">tools/run_benchmark.sh</span>: every reply is recorded, then shown here and replayed without a key.</div></div>') +
-        block(a.reference, "Rule-based reference extractor (used in replay mode)") +
-        '<div class="card" style="margin-top:16px"><h2>Agent calls (traced as Interoperability messages)</h2><p class="muted small">Spent $' + (+calls.spent_usd).toFixed(2) + ". Each row is also an AgentRequest/AgentResponse pair in Visual Trace. In replay mode the agent runs for real but the reply comes from the local rule-based endpoint, so no model is called and the token counts are not real.</p>" +
+        block(a.reference, "Rule-based reference extractor (baseline; replay uses it only for a recall with no recording)") +
+        '<div class="card" style="margin-top:16px"><h2>Agent calls (traced as Interoperability messages)</h2><p class="muted small">Spent $' + (+calls.spent_usd).toFixed(2) + ". Each row is also an AgentRequest/AgentResponse pair in Visual Trace. In replay mode the agent runs for real but the reply comes from the local endpoint (a recorded Claude output, or a rule-based reply), so no model is called and no tokens are spent.</p>" +
         '<div class="tablewrap"><table><tr><th>Time (UTC)</th><th>Recall</th><th>Mode</th><th>Model</th><th>Tokens in/out</th><th>Cost</th><th>Latency</th><th>Trace</th></tr>' +
         calls.calls.slice(0, 20).map(function (c) {
           var live = c.mode === "live";
-          return '<tr><td class="mono small">' + esc(c.ts) + '</td><td class="mono">' + esc(c.recall_number) + "</td><td>" + (live ? "live" : "replay (rule-based)") + "</td><td>" + (live ? esc(c.model) : '<span class="muted">none called</span>') + "</td><td>" + (live ? c.input_tokens + " / " + c.output_tokens : '<span class="muted">-</span>') +
+          return '<tr><td class="mono small">' + esc(c.ts) + '</td><td class="mono">' + esc(c.recall_number) + "</td><td>" + (live ? "live" : "replay") + "</td><td>" + (live ? esc(c.model) : '<span class="muted">none called</span>') + "</td><td>" + (live ? c.input_tokens + " / " + c.output_tokens : '<span class="muted">-</span>') +
             "</td><td>$" + (+c.cost_usd || 0).toFixed(2) + "</td><td>" + c.latency_ms + " ms</td><td>" + traceLink(c.session_id, "#" + c.session_id) + "</td></tr>";
         }).join("") + "</table></div></div>";
     }).catch(function (e) { app.innerHTML = '<div class="card empty">' + esc(e.message) + "</div>"; });

@@ -186,6 +186,7 @@ td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
   .inbox-head{flex-wrap:wrap;align-items:flex-start}
   .timer{flex-wrap:wrap}
   .tabs a{padding:8px 10px} .tabs .long{display:none}
+  .right{flex-wrap:wrap;gap:8px;min-width:0} .mode{white-space:normal}
   .toast{top:auto;bottom:12px;left:12px;right:12px;max-width:none}
   .sticky{flex-wrap:wrap}
   h1{font-size:24px}
