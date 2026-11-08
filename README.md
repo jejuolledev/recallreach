@@ -44,7 +44,7 @@ Then:
 
 ```bash
 git clone https://github.com/jejuolledev/recallreach && cd recallreach
-docker compose up -d --build   # compiles, loads data, runs 6 recalls through the production (about 30 s to 3 min)
+docker compose up -d --build   # compiles, loads data, runs 7 recalls through the production (about 30 s to 3 min)
 # then open http://localhost:52795/recallreach/index.html in a browser
 ```
 
@@ -52,10 +52,10 @@ No login for the app. Management Portal: http://localhost:52795/csp/sys/UtilHome
 
 ## Try it
 
-1. **Scan** tab: *Use a sample barcode* -> *Read barcode* -> *Record lot here* on patient 10003400 (fill 6118). This plays the pharmacist who scanned the box when filling it. A barcode with a wrong check digit or no expiry is refused.
-2. **Recalls** tab: the inbox already holds six older recalls; five of them are shelf checks (retail level) and one is a patient-contact recall. *Simulate new FDA recall*: D-0464-2017 (oxycodone oral solution, water possibly contaminated with *Burkholderia cepacia*) arrives and the agent reads it.
-3. Open it. The decision box says **Patient contact**, consumer level (inferred: Class II with a contamination reason). The notice is on the left, the extracted fields on the right; click a field to see its evidence.
-4. *Find patients*: the list spins and stops on patient 10003400, now 100% with "Lot confirmed". Without the scan the top estimate is about 55%. Press *Why ...?* on any row for the formula and sources.
+1. **Scan** tab: *Use a sample barcode* -> *Read barcode* -> *Record lot here* on patient 10012853 (fill 7171). This plays the pharmacist who scanned the box when filling it. A barcode with a wrong check digit or no expiry is refused.
+2. **Recalls** tab: the inbox already holds seven older recalls; five are shelf checks (retail level) and two are patient-contact recalls. *Simulate new FDA recall*: D-1206-2018 arrives and the agent reads it. It is a Class I recall of a daily blood-pressure tablet: bottles labeled Hydrochlorothiazide 12.5 mg could contain only Spironolactone 25 mg.
+3. Open it. The decision box says **Patient contact**, consumer level (inferred: Class I). The notice is on the left, the extracted fields on the right; click a field to see its evidence.
+4. *Find patients*: the list spins and stops on patient 10012853 (female, 91), now 100% with "Lot confirmed". Without the scan she is still first, at about 10%. Press *Why ...?* on any row for the formula and sources.
 5. *Ask pharmacist approval* -> *Approve*. The button locks; *Try this link again* sends the same approval a second time and is refused (HTTP 409). An approval left for 10 minutes expires.
 6. Open D-1226-2015 (lisinopril, "did not adequately investigate customer complaints"): **Shelf check only**. No patient list, no calls, a task with lot 131928 to pull, and *Mark shelf check done*.
 7. Turn on the **Kill switch**: the agent, the feed, approvals and actions stop, and pending approvals are cancelled.
@@ -127,7 +127,8 @@ P(patient) = average over MIMIC's date shift of [ 1 - product(1 - P(fill)) ]
 
 ## Numbers you can check
 
-- Demo recall **D-0464-2017** (Class II, Oxycodone HCl Oral Solution 5 mg/5 mL, VistaPharm, 13 lots, nationwide). 64 MIMIC patients have a matching order; 14 shown, 50 under 5%. With lot 427900 scanned for patient 10003400: 100%, "Lot confirmed". Without a scan the top is patient 10020740, about 55%.
+- Demo recall **D-1206-2018** (Class I, Hydrochlorothiazide Tablets USP 12.5 mg, Accord Healthcare, NDC 16729-182-01, lot PW05264 exp 11/2019, 46,632 bottles, nationwide; reason: the bottle held Spironolactone 25 mg). 6 MIMIC patients have a hydrochlorothiazide order; 2 of them got the recalled NDC. 1 shown, 5 under 5%. With lot PW05264 scanned for patient 10012853: 100%, "Lot confirmed". Without a scan she is first at about 10% (0.12 before rounding).
+- D-0464-2017 (Class II, oxycodone oral solution, water possibly contaminated with *Burkholderia cepacia*): consumer level (inferred), 14 shown, 50 under 5%.
 - D-1226-2015 (Lisinopril 5 mg, Class II, complaint-handling problem): retail level (inferred), shelf check for lot 131928. The tool still reports 11 orders of the recalled NDC for 7 patients; nobody is called.
 - Depth in the 647 shipped recalls: stated in the text for 2; inferred for the rest.
 - 372 of 18,076 openFDA drug recalls share an NDC with the 100 MIMIC demo patients.

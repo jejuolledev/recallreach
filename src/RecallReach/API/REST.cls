@@ -272,7 +272,7 @@ ClassMethod BarcodeRecord() As %Status
 ClassMethod BarcodeSample() As %Status
 {
     Set meta = {}.%FromJSON($G(^RecallReach("Meta"), "{}")), s = meta."demo_sample"
-    If '$ISOBJECT(s) Set s = {"ndc11": "66689040150", "lot": "427900", "expiry": "2017-11-30", "dispense_id": 6118, "subject_id": "10003400"}
+    If '$ISOBJECT(s) Set s = {"ndc11": "16729018201", "lot": "PW05264", "expiry": "2019-11-30", "dispense_id": 7171, "subject_id": "10012853"}
     Set ndc = $G(%request.Data("ndc", 1), s.ndc11), lot = $G(%request.Data("lot", 1), s.lot), exp = $G(%request.Data("exp", 1), s.expiry)
     Set raw = ##class(RecallReach.Core.Py).BuildGS1(ndc, lot, exp, "RR"_($R(900000)+100000))
     Quit ..Out({"raw": (raw), "ndc11": (ndc), "lot": (lot), "expiry": (exp), "recall_number": (meta."demo_recall"), "dispense_id": (s."dispense_id"), "subject_id": (s."subject_id"),

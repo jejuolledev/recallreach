@@ -516,7 +516,7 @@
       '<div class="card"><div class="row wrap"><h2 style="margin:0">1. Scan or paste the barcode</h2><span class="spacer"></span>' +
       '<button class="btn ghost" id="cam" hidden>Use camera</button><button class="btn ghost" id="sample">Use a sample barcode</button></div>' +
       '<p class="muted small">Scanners type the barcode like a keyboard. Both "(01)...(17)...(10)...(21)..." and raw strings with the group separator work.</p>' +
-      '<textarea class="scanbox" id="raw" placeholder="(01)00366689401503(17)171130(10)427900(21)..."></textarea>' +
+      '<textarea class="scanbox" id="raw" placeholder="(01)00316729182010(17)191130(10)PW05264(21)..."></textarea>' +
       '<div class="muted small" id="samplenote"></div>' +
       '<video id="vid" playsinline muted style="display:none;width:100%;max-width:420px;border-radius:12px;margin-top:10px"></video>' +
       '<div class="row" style="margin-top:10px"><button class="btn" id="parse">Read barcode</button></div><div id="parsed"></div></div>' +
