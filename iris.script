@@ -1,0 +1,13 @@
+zn "USER"
+set sc = $SYSTEM.OBJ.LoadDir("/opt/recallreach/src", "ck", .err, 1)
+if 'sc { write !, "COMPILE FAILED", ! do $SYSTEM.Status.DisplayError(sc) do $SYSTEM.Process.Terminate(, 1) }
+set sc = ##class(RecallReach.Core.Setup).Run()
+if 'sc { write !, "SETUP FAILED", ! do $SYSTEM.Status.DisplayError(sc) do $SYSTEM.Process.Terminate(, 1) }
+set sc = ##class(Ens.Director).StartProduction("RecallReach.Production")
+if 'sc { write !, "PRODUCTION FAILED", ! do $SYSTEM.Status.DisplayError(sc) do $SYSTEM.Process.Terminate(, 1) }
+do ##class(RecallReach.Core.Setup).QueueHistory()
+do ##class(RecallReach.Core.Setup).WaitIdle(240)
+do ##class(Ens.Director).StopProduction(20, 1)
+zn "%SYS"
+do ##class(Security.Users).UnExpireUserPasswords("*")
+halt
