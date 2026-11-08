@@ -5,3 +5,6 @@ __pycache__/
 node_modules/
 _screens/*.tmp
 .DS_Store
+_qa/
+.omc/
+_screens/frames/
